@@ -1,20 +1,19 @@
 // Globale Konstanten und Zustandsvariablen
-const API_BASE_URL = 'php/';
-const CORS_PROXY_URL = 'https://api.allorigins.win/raw?url=';
+const API_BASE_URL = 'api.php'; // NEU: Zentraler API-Endpunkt
+// const CORS_PROXY_URL = 'https://api.allorigins.win/raw?url='; // Nicht mehr benötigt für AlecaFrame
 const WFCD_RELICS_URL = 'https://cdn.jsdelivr.net/gh/WFCD/warframe-items/data/json/Relics.json';
 const WFCD_IMAGE_CDN = 'https://cdn.warframestat.us/img/';
 
 let currentUser = null;
-let wfcdRelicMap = new Map(); // NEU: Map für schnellen Zugriff auf WFCD-Daten via normalisiertem Namen
+let wfcdRelicMap = new Map();
 let userRelicInventory = null;
-let lastFetchedBase64RelicData = null;
+let lastFetchedBase64RelicData = null; // Wird jetzt vom PHP-Proxy als String geliefert
 let amChartsInstances = { credits: null, platinum: null, endo: null };
 
-// DOM-Elemente (Kurzreferenzen, da schon bekannt)
+// DOM-Elemente
 const systemBootLoader = document.getElementById('system-boot-loader');
 const apiLoader = document.getElementById('api-loader');
 const appContainer = document.getElementById('app-container');
-// ... (weitere DOM-Elemente wie gehabt) ...
 const loginSection = document.getElementById('login-section');
 const registerSection = document.getElementById('register-section');
 const dashboardSection = document.getElementById('dashboard-section');
@@ -44,7 +43,6 @@ const settingsAccessMessage = document.getElementById('settings-access-message')
 const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
-
 
 // --- Hilfsfunktionen ---
 function showApiLoader() { apiLoader.classList.remove('hidden'); }
@@ -86,26 +84,17 @@ function loadAccentColor() {
     const savedColor = localStorage.getItem('accentColor');
     applyAccentColor(savedColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim());
 }
-
-// --- NEU: Relikt-Namen Normalisierungsfunktion ---
-/**
- * Normalisiert einen Relikt-Namen für den Abgleich zwischen APIs.
- * Beispiel: "Lith L5 Relic (Radiant)" -> "lith l5"
- * @param {string} name - Der ursprüngliche Relikt-Name.
- * @returns {string} - Der normalisierte Name.
- */
 function normalizeRelicName(name) {
     if (typeof name !== 'string') return '';
     return name.toLowerCase()
-               .replace(/\s*\([\w\s]+\)\s*$/, '') // Entfernt Anhängsel wie (Radiant), (Intact) etc.
-               .replace(/relic/g, '')          // Entfernt das Wort "relic"
-               .replace(/prime vault/g, '')     // Entfernt "prime vault"
-               .replace(/vaulted/g, '')         // Entfernt "vaulted"
-               .replace(/\[|\]/g, '')           // Entfernt eckige Klammern
-               .replace(/\s+/g, ' ')             // Mehrfache Leerzeichen zu einem
-               .trim();                          // Leerzeichen am Anfang/Ende entfernen
+               .replace(/\s*\([\w\s]+\)\s*$/, '')
+               .replace(/relic/g, '')
+               .replace(/prime vault/g, '')
+               .replace(/vaulted/g, '')
+               .replace(/\[|\]/g, '')
+               .replace(/\s+/g, ' ')
+               .trim();
 }
-
 
 async function init() {
     loadAccentColor();
@@ -129,59 +118,58 @@ async function init() {
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
 
-    await loadWfcdRelicData(); // WFCD Daten zuerst laden, damit die Map bereit ist
-    await checkUserSession();  // Dann Session prüfen und ggf. AlecaFrame Daten laden
+    await loadWfcdRelicData();
+    await checkUserSession();
 }
 
-// Authentifizierungsfunktionen (bleiben im Wesentlichen gleich)
-async function handleLogin(event) { /* ... wie gehabt ... */
+async function handleLogin(event) {
     event.preventDefault(); displayMessage(loginMessage, '');
     const body = { username: loginForm.username.value, password: loginForm.password.value };
     showApiLoader();
     try {
-        const response = await fetch(`${API_BASE_URL}login.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const response = await fetch(`${API_BASE_URL}?action=login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await response.json();
         if (response.ok && data.success) {
             currentUser = data.user; await afterLogin();
         } else { displayMessage(loginMessage, data.error || 'Login fehlgeschlagen.', true); }
     } catch (e) { displayMessage(loginMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-async function handleRegister(event) { /* ... wie gehabt ... */
+async function handleRegister(event) {
     event.preventDefault(); displayMessage(registerMessage, '');
     const body = { username: registerForm.username.value, password: registerForm.password.value, access_code: registerForm.access_code.value };
     showApiLoader();
     try {
-        const response = await fetch(`${API_BASE_URL}register.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const response = await fetch(`${API_BASE_URL}?action=register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await response.json();
         if (response.ok && data.success) {
             displayMessage(registerMessage, data.success + ' Anmelden.', false); registerForm.reset(); setTimeout(() => showView(loginSection), 2000);
         } else { displayMessage(registerMessage, data.error || 'Registrierung fehlgeschlagen.', true); }
     } catch (e) { displayMessage(registerMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-async function checkUserSession() { /* ... wie gehabt ... */
+async function checkUserSession() {
     showApiLoader();
     try {
-        const response = await fetch(`${API_BASE_URL}check_session.php`, { method: 'GET' });
+        const response = await fetch(`${API_BASE_URL}?action=check_session`, { method: 'GET' });
         const data = await response.json();
         if (response.ok && data.loggedIn) { currentUser = data.user; await afterLogin(); } else { showView(loginSection); }
     } catch (e) { showView(loginSection); } finally { hideApiLoader(); }
 }
-async function afterLogin() { /* ... wie gehabt ... */
+async function afterLogin() {
     if (!currentUser) return;
     usernameDisplay.textContent = currentUser.username;
     showView(dashboardSection);
     if (currentUser.api_token) {
         alecaFrameTokenInput.value = currentUser.api_token;
-        await loadAlecaFrameData(currentUser.api_token);
+        await loadAlecaFrameData(); // Ruft jetzt ohne Token-Parameter auf
     } else {
         statsSection.classList.add('hidden'); relicInventorySection.classList.add('hidden');
         alecaFrameTokenSection.classList.remove('hidden');
         displayMessage(alecaFrameTokenMessage, 'AlecaFrame Token eingeben.', false);
     }
 }
-async function handleLogout() { /* ... wie gehabt ... */
+async function handleLogout() {
     showApiLoader();
-    try { await fetch(`${API_BASE_URL}logout.php`, { method: 'POST' }); } catch (e) { console.error('Logout Fehler:', e); }
+    try { await fetch(`${API_BASE_URL}?action=logout`, { method: 'POST' }); } catch (e) { console.error('Logout Fehler:', e); }
     finally {
         currentUser = null; lastFetchedBase64RelicData = null; userRelicInventory = null;
         showView(loginSection); loginForm.reset();
@@ -193,62 +181,92 @@ async function handleLogout() { /* ... wie gehabt ... */
         hideApiLoader();
     }
 }
-async function handleSaveAndLoadAlecaFrameToken() { /* ... wie gehabt ... */
+async function handleSaveAndLoadAlecaFrameToken() {
     const token = alecaFrameTokenInput.value.trim();
     if (!token) { displayMessage(alecaFrameTokenMessage, 'Token darf nicht leer sein.', true); return; }
     showApiLoader();
     try {
-        const response = await fetch(`${API_BASE_URL}save_token.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_token: token }) });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            if (currentUser) currentUser.api_token = token;
-            await loadAlecaFrameData(token);
-        } else { displayMessage(alecaFrameTokenMessage, data.error || 'Fehler Speichern Token.', true); }
-    } catch (e) { displayMessage(alecaFrameTokenMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
+        // Token zuerst im Backend speichern
+        const saveResponse = await fetch(`${API_BASE_URL}?action=save_token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_token: token }) });
+        const saveData = await saveResponse.json();
+        if (!saveResponse.ok || !saveData.success) {
+            throw new Error(saveData.error || "Fehler beim Speichern des Tokens.");
+        }
+
+        // Wenn Speichern erfolgreich, currentUser aktualisieren und Daten laden
+        if (currentUser) currentUser.api_token = token; // Wichtig, damit der Proxy den neuen Token verwendet
+        await loadAlecaFrameData(); // Ruft jetzt ohne Token-Parameter auf
+
+    } catch (e) {
+        displayMessage(alecaFrameTokenMessage, e.message || 'Netzwerkfehler oder Server-Problem.', true);
+    } finally {
+        hideApiLoader();
+    }
 }
 
-// --- AlecaFrame Datenverarbeitung ---
-async function loadAlecaFrameData(token) {
-    if (!token) { statsSection.classList.add('hidden'); relicInventorySection.classList.add('hidden'); displayMessage(alecaFrameTokenMessage, 'Kein Token.', true); return; }
-    displayMessage(alecaFrameTokenMessage, ''); showApiLoader();
-    statsSection.classList.remove('hidden'); relicInventorySection.classList.remove('hidden');
+// --- AlecaFrame Datenverarbeitung via PHP Proxy ---
+async function loadAlecaFrameData() { // Token wird nicht mehr als Parameter benötigt
+    displayMessage(alecaFrameTokenMessage, '');
+    showApiLoader();
+    statsSection.classList.remove('hidden');
+    relicInventorySection.classList.remove('hidden');
 
     try {
-        const statsUrl = `${CORS_PROXY_URL}${encodeURIComponent(`https://stats.alecaframe.com/api/stats/public?token=${token}`)}`;
-        const statsResponse = await fetch(statsUrl);
-        if (!statsResponse.ok) throw new Error(`AlecaFrame Stats API: ${statsResponse.status} ${statsResponse.statusText}`);
-        const responseText = await statsResponse.text();
-        console.log("Rohe Antwort von AlecaFrame Stats API (via Proxy):", responseText);
-        const statsData = JSON.parse(responseText);
-
-        if (statsData.type && statsData.title && statsData.status && statsData.status >= 400) {
-            throw new Error(`API Fehler: "${statsData.title}" (Status ${statsData.status}). Token prüfen oder später versuchen.`);
-        }
-        if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`);
-        if (!statsData.generalDataPoints) {
-            console.error("Fehlende 'generalDataPoints'. Empfangene Keys:", Object.keys(statsData));
-            throw new Error("Stats: 'generalDataPoints' fehlt. Unerwartete API-Antwortstruktur.");
+        const response = await fetch(`${API_BASE_URL}?action=get_warframe_data`, { method: 'GET' });
+        if (!response.ok) {
+            let errorMsg = `Fehler vom Server-Proxy: ${response.status} ${response.statusText}`;
+            try { const errorData = await response.json(); errorMsg = errorData.error || errorMsg; } catch(e) {}
+            throw new Error(errorMsg);
         }
 
-        const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
-        if(statsData.usernameWhenPublic) latestStats.usernameWhenPublic = statsData.usernameWhenPublic;
-        displayGeneralStats(latestStats);
-        createCurrencyCharts(statsData.generalDataPoints);
+        const combinedData = await response.json();
+        console.log("Kombinierte Daten vom PHP-Proxy:", combinedData);
 
-        const relicUrl = `${CORS_PROXY_URL}${encodeURIComponent(`https://stats.alecaframe.com/api/stats/public/getRelicInventory?publicToken=${token}`)}`;
-        const relicResponse = await fetch(relicUrl);
-        if (!relicResponse.ok) throw new Error(`AlecaFrame Relic API: ${relicResponse.status} ${relicResponse.statusText}`);
-        lastFetchedBase64RelicData = await relicResponse.text();
-        try { const j = JSON.parse(lastFetchedBase64RelicData); if (j && j.error) throw new Error(`AlecaFrame Relic API Fehler: ${j.error}`); } catch(e) {}
-        parseAndDisplayRelicInventory(lastFetchedBase64RelicData);
+        // Verarbeitung der Statistikdaten
+        if (combinedData.statsDataError) {
+            console.error("Fehler bei Stats-Daten vom PHP-Proxy:", combinedData.statsDataError);
+            displayMessage(alecaFrameTokenMessage, `Stats API Fehler: ${combinedData.statsDataError}`, true);
+            generalStatsDisplay.innerHTML = `<p class="text-red-400">${combinedData.statsDataError}</p>`;
+            // Verstecke Chart-Container, wenn Stats fehlschlagen
+            Object.keys(amChartsInstances).forEach(key => document.getElementById(`${key}-chart-container`).innerHTML = '');
+
+        } else if (combinedData.statsData && combinedData.statsData.generalDataPoints) {
+            const statsData = combinedData.statsData;
+            const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
+            if(statsData.usernameWhenPublic) latestStats.usernameWhenPublic = statsData.usernameWhenPublic;
+            displayGeneralStats(latestStats);
+            createCurrencyCharts(statsData.generalDataPoints);
+        } else {
+            const errorDetail = combinedData.statsData ? `Empfangene Keys: ${Object.keys(combinedData.statsData).join(', ')}` : "Keine StatsData empfangen.";
+            console.error("Unerwartete oder fehlende Stats-Daten vom PHP-Proxy:", errorDetail, combinedData.statsData);
+            displayMessage(alecaFrameTokenMessage, "Fehler: Keine gültigen Statistikdaten empfangen.", true);
+            generalStatsDisplay.innerHTML = `<p class="text-red-400">Keine gültigen Statistikdaten empfangen. ${errorDetail}</p>`;
+            Object.keys(amChartsInstances).forEach(key => document.getElementById(`${key}-chart-container`).innerHTML = '');
+        }
+
+        // Verarbeitung der Relikt-Inventardaten
+        if (combinedData.relicInventoryDataError) {
+            console.error("Fehler bei Relikt-Inventar-Daten vom PHP-Proxy:", combinedData.relicInventoryDataError);
+            relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">${combinedData.relicInventoryDataError}</p>`;
+        } else if (combinedData.relicInventoryData) {
+            lastFetchedBase64RelicData = combinedData.relicInventoryData; // Ist der String, der ggf. JSON-escaped Base64 ist
+            parseAndDisplayRelicInventory(lastFetchedBase64RelicData);
+        } else {
+            console.error("Unerwartete oder fehlende Relikt-Inventar-Daten vom PHP-Proxy.");
+            relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">Keine gültigen Relikt-Inventardaten empfangen.</p>`;
+        }
+
     } catch (error) {
-        console.error('Fehler AlecaFrame Daten:', error);
-        displayMessage(alecaFrameTokenMessage, `Fehler: ${error.message}`, true);
-        statsSection.classList.add('hidden'); relicInventorySection.classList.add('hidden');
-    } finally { hideApiLoader(); }
+        console.error('Fehler beim Abrufen der Daten via PHP-Proxy:', error);
+        displayMessage(alecaFrameTokenMessage, `Proxy Fehler: ${error.message}`, true);
+        statsSection.classList.add('hidden');
+        relicInventorySection.classList.add('hidden');
+    } finally {
+        hideApiLoader();
+    }
 }
 
-function displayGeneralStats(latestDataPoint) { /* ... wie gehabt, ggf. anpassen ... */
+function displayGeneralStats(latestDataPoint) {
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -262,7 +280,7 @@ function displayGeneralStats(latestDataPoint) { /* ... wie gehabt, ggf. anpassen
     html += '</div>';
     generalStatsDisplay.innerHTML = html;
 }
-function createCurrencyCharts(generalDataPoints) { /* ... wie gehabt ... */
+function createCurrencyCharts(generalDataPoints) {
     const createChart = (containerId, dataArray, valueFieldName, colorHex, currencyName) => {
         const chartContainer = document.getElementById(containerId);
         if (!chartContainer) { console.error(`Chart Container ${containerId} fehlt.`); return; }
@@ -296,29 +314,27 @@ function createCurrencyCharts(generalDataPoints) { /* ... wie gehabt ... */
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-// --- WFCD Item Database ---
 async function loadWfcdRelicData() {
-    if (wfcdRelicMap.size > 0) { // Prüfe, ob die Map bereits gefüllt ist
+    if (wfcdRelicMap.size > 0) {
         console.log("WFCD Relic Map bereits initialisiert.");
         return;
     }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
     try {
-        const response = await fetch(WFCD_RELICS_URL);
+        const response = await fetch(WFCD_RELICS_URL); // Direkt fetch, da keine Credentials/Proxy für WFCD nötig
         if (!response.ok) throw new Error(`WFCD Relic.json: ${response.statusText}`);
         const itemsArray = await response.json();
 
-        wfcdRelicMap.clear(); // Sicherstellen, dass die Map leer ist, bevor sie gefüllt wird
+        wfcdRelicMap.clear();
         itemsArray.forEach(item => {
             const normalizedKey = normalizeRelicName(item.name);
-            if (normalizedKey) { // Nur hinzufügen, wenn ein gültiger Schlüssel erzeugt wurde
+            if (normalizedKey) {
                 wfcdRelicMap.set(normalizedKey, item);
             }
         });
         console.log('WFCD Relic Map initialisiert:', wfcdRelicMap.size, "Einträge");
 
-        // Wenn Relikt-Inventar auf diese Daten gewartet hat, neu parsen/anzeigen
         if (lastFetchedBase64RelicData && relicInventoryGrid.innerHTML.includes("Lade Relikt-DB...")) {
             parseAndDisplayRelicInventory(lastFetchedBase64RelicData);
         }
@@ -330,8 +346,6 @@ async function loadWfcdRelicData() {
     } finally { hideApiLoader(); }
 }
 
-
-// --- Relikt Inventar Verarbeitung ---
 function parseAndDisplayRelicInventory(base64ApiResponse) {
     relicInventoryGrid.innerHTML = '';
     try {
@@ -342,7 +356,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
             actualBase64String = JSON.parse(base64ApiResponse);
             if (typeof actualBase64String !== 'string') {
                 console.warn('Relikt-Antwort (nach JSON.parse) ist kein String. Typ:', typeof actualBase64String);
-                actualBase64String = base64ApiResponse; // Fallback zum direkten String
+                actualBase64String = base64ApiResponse;
             }
         } catch (e) {
             console.warn('JSON.parse der Relikt-Antwort fehlgeschlagen, verwende direkten String. Fehler:', e);
@@ -358,7 +372,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
         if (bytes.length === 0 && actualBase64String.length > 0) throw new Error("Relikt-Inventar dekodiert zu Länge 0.");
         if (bytes.length === 0) throw new Error("Relikt-Inventar leer/Dekodierfehler.");
 
-        if (wfcdRelicMap.size === 0) { // WFCD Map muss geladen sein
+        if (wfcdRelicMap.size === 0) {
             relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Warte auf WFCD Relikt-Datenbank...</p>';
             setTimeout(() => parseAndDisplayRelicInventory(base64ApiResponse), 2000);
             return;
@@ -369,12 +383,12 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
         const numRelicTypes = dataView.getUint32(offset, true); offset += 4;
         userRelicInventory = [];
 
-        const relicTierApiMap = ["Lith", "Meso", "Neo", "Axi", "Requiem"]; // Für AlecaFrame Byte-Wert
+        const relicTierApiMap = ["Lith", "Meso", "Neo", "Axi", "Requiem"];
 
         for (let i = 0; i < numRelicTypes; i++) {
             if (offset + 9 > bytes.length) { console.error("Nicht genug Daten für Relikt #", i); break; }
             const typeByte = dataView.getUint8(offset); offset += 1;
-            const refinementByte = dataView.getUint8(offset); offset += 1; // Aktuell nicht für Abgleich verwendet
+            const refinementByte = dataView.getUint8(offset); offset += 1;
 
             let nameChars = [];
             for(let j=0; j < 3; j++) nameChars.push(String.fromCharCode(dataView.getUint8(offset + j)));
@@ -383,29 +397,18 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
             const count = dataView.getUint32(offset, true); offset += 4;
 
             const alecaTierName = relicTierApiMap[typeByte] || "UnknownTier";
-            // Erzeuge den normalisierten Schlüssel aus AlecaFrame-Daten
             const normalizedAlecaName = normalizeRelicName(`${alecaTierName} ${alecaRelicShortName}`);
 
             const wfcdDetail = wfcdRelicMap.get(normalizedAlecaName);
 
             if (wfcdDetail) {
-                userRelicInventory.push({
-                    ...wfcdDetail, // Alle Daten von WFCD
-                    count: count,  // Anzahl von AlecaFrame
-                    // Ggf. apiTierName und apiShortName für Debugging beibehalten, falls nötig
-                    // apiTierName: alecaTierName,
-                    // apiShortName: alecaRelicShortName
-                });
+                userRelicInventory.push({ ...wfcdDetail, count: count });
             } else {
                 console.warn(`Kein WFCD Detail für normalisierten Namen "${normalizedAlecaName}" (Original Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
                 userRelicInventory.push({
                     name: `${alecaTierName} ${alecaRelicShortName}`,
                     uniqueName: `unknown_${normalizedAlecaName.replace(/\s+/g, '_')}`,
-                    tier: alecaTierName,
-                    imageName: '',
-                    rewards: [],
-                    vaulted: false,
-                    count: count,
+                    tier: alecaTierName, imageName: '', rewards: [], vaulted: false, count: count,
                 });
             }
         }
@@ -425,10 +428,9 @@ function displayRelics(relicsToDisplay) {
     relicInventoryGrid.innerHTML = '';
 
     relicsToDisplay.forEach(relic => {
-        // Verwende direkt die Daten aus dem (hoffentlich) angereicherten Relikt-Objekt
-        const imageName = relic.imageName || `${(relic.tier || '').toLowerCase()}${(relic.name || '').split(' ').pop().toLowerCase()}relicint.png`; // Fallback für imageName
+        const imageName = relic.imageName || `${(relic.tier || '').toLowerCase()}${(relic.name || '').split(' ').pop().toLowerCase()}relicint.png`;
         const isVaulted = relic.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span> " : "";
-        const displayName = relic.name; // Sollte jetzt der volle Name aus WFCD sein
+        const displayName = relic.name;
 
         const relicElement = document.createElement('div');
         relicElement.className = 'panel !p-2 flex flex-col items-center text-center cursor-pointer interactive-element transition-all hover:scale-105 focus-within:ring-2 focus-within:ring-primary-accent';
@@ -448,7 +450,7 @@ function displayRelics(relicsToDisplay) {
     });
 }
 
-function showRelicTooltip(event, relicData) { // relicData sollte jetzt das angereicherte Objekt sein
+function showRelicTooltip(event, relicData) {
     if (!relicData) return;
     const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
     let tooltipContent = `<h5 class="font-bold text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h5>`;
@@ -458,7 +460,7 @@ function showRelicTooltip(event, relicData) { // relicData sollte jetzt das ange
         const rarityOrder = { "Rare": 1, "Uncommon": 2, "Common": 3 };
         const sortedRewards = [...relicData.rewards].sort((a,b) =>
             (rarityOrder[a.rarity] || 4) - (rarityOrder[b.rarity] || 4) ||
-            b.chance - a.chance || // Sekundär nach Chance, falls Seltenheit gleich
+            b.chance - a.chance ||
             a.itemName.localeCompare(b.itemName)
         );
         sortedRewards.slice(0, 3).forEach(item => {
@@ -473,7 +475,7 @@ function showRelicTooltip(event, relicData) { // relicData sollte jetzt das ange
     moveRelicTooltip(event);
 }
 function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
-function moveRelicTooltip(event) { /* ... wie gehabt ... */
+function moveRelicTooltip(event) {
     if (relicTooltip.classList.contains('hidden')) return;
     const { clientX:mX, clientY:mY } = event; const rect = relicTooltip.getBoundingClientRect();
     let x = mX + 20, y = mY + 20;
@@ -483,25 +485,22 @@ function moveRelicTooltip(event) { /* ... wie gehabt ... */
     relicTooltip.style.left = `${x}px`; relicTooltip.style.top = `${y}px`;
 }
 
-// --- Einstellungs-Modal (bleibt gleich) ---
-function openSettingsModal() { /* ... wie gehabt ... */
+function openSettingsModal() {
     settingsModal.classList.remove('hidden'); settingsAccessCodeSection.classList.remove('hidden');
     colorPickerSection.classList.add('hidden'); settingsAccessCodeInput.value = '';
     displayMessage(settingsAccessMessage, ''); settingsAccessCodeInput.focus();
 }
 function closeSettingsModal() { settingsModal.classList.add('hidden'); }
-function checkSettingsAccessCode() { /* ... wie gehabt ... */
+function checkSettingsAccessCode() {
     if (settingsAccessCodeInput.value === "69420") {
         settingsAccessCodeSection.classList.add('hidden'); colorPickerSection.classList.remove('hidden'); displayMessage(settingsAccessMessage, '');
     } else { displayMessage(settingsAccessMessage, 'Falscher Code.', true); }
 }
 
-// --- Three.js Hintergrund (bleibt gleich) ---
 import { initThreeJS } from './threejs-background.js';
-function initThreeJSBackground() { /* ... wie gehabt ... */
+function initThreeJSBackground() {
     const c = document.getElementById('threejs-canvas-container');
     if (c) { try { initThreeJS(c); } catch (e) { console.error("Three.js Fehler:", e); c.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding-top:40vh;">BG Animation Fehler.</p>'; } }
 }
 
-// --- App Start ---
 document.addEventListener('DOMContentLoaded', () => { init(); initThreeJSBackground(); });
