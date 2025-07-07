@@ -307,15 +307,39 @@ function parseAndDisplayRelicInventory(base64Data) {
     relicInventoryGrid.innerHTML = '';
     try {
         if (!base64Data) throw new Error("Keine Base64 Relikt-Daten.");
-        const binaryString = atob(base64Data);
+
+        // NEU: Erst JSON parsen, um den inneren Base64-String zu erhalten, wie in deinem alten Code.
+        let actualBase64String;
+        try {
+            // Annahme: Die API-Antwort (base64Data) ist ein JSON-String, der den Base64-Datenstring enthält.
+            // z.B. "\"SGVsbG8gd29ybGQ=\\\"" wird zu "SGVsbG8gd29ybGQ="
+            actualBase64String = JSON.parse(base64Data);
+            if (typeof actualBase64String !== 'string') {
+                console.warn('Nach JSON.parse der Relikt-Antwort war das Ergebnis kein String. Typ:', typeof actualBase64String, "Wert:", actualBase64String, "Original:", base64Data);
+                actualBase64String = base64Data; // Fallback, falls die API doch direkt Base64 sendet oder ein unerwartetes JSON-Objekt
+            }
+        } catch (e) {
+            // Wenn das JSON.parse fehlschlägt, war es vielleicht doch direkt Base64 (wie von Swagger angedeutet).
+            console.warn('JSON.parse der Relikt-Antwort fehlgeschlagen, versuche direkten Base64-String. Fehler:', e);
+            actualBase64String = base64Data; // Fallback zum direkten String
+        }
+
+        if (!actualBase64String) throw new Error("Konnte keinen gültigen Base64-String aus der Relikt-Antwort extrahieren.");
+
+        const binaryString = atob(actualBase64String);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+
+        if (bytes.length === 0 && actualBase64String.length > 0) throw new Error("Relikt-Inventar dekodiert zu Länge 0 trotz vorhandener Base64-Daten.");
         if (bytes.length === 0) throw new Error("Relikt-Inventar leer/dekodierfehler.");
-        if (bytes.length < 500 && new TextDecoder().decode(bytes).toLowerCase().match(/error|token|invalid/)) throw new Error("Relikt API Antwort: " + new TextDecoder().decode(bytes).substring(0,150));
+
+        // Die Prüfung auf Fehlertext im Binärcode ist weniger zuverlässig, wenn es wirklich binär ist.
+        // Besser ist die Fehlerbehandlung beim API-Aufruf selbst.
+        // if (bytes.length < 500 && new TextDecoder().decode(bytes).toLowerCase().match(/error|token|invalid/)) throw new Error("Relikt API Antwort: " + new TextDecoder().decode(bytes).substring(0,150));
 
         if (!wfcdRelicData) {
             relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Lade Relikt-DB...</p>';
-            setTimeout(() => parseAndDisplayRelicInventory(base64Data), 2000); return;
+            setTimeout(() => parseAndDisplayRelicInventory(base64Data), 2000); return; // Wichtig: base64Data (Original) erneut übergeben
         }
 
         const dataView = new DataView(bytes.buffer);
