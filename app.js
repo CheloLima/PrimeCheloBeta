@@ -25,34 +25,28 @@ const showLoginButton = document.getElementById('show-login-button');
 const usernameDisplay = document.getElementById('username-display');
 const logoutButton = document.getElementById('logout-button');
 const settingsButton = document.getElementById('settings-button');
-
 const alecaFrameTokenSection = document.getElementById('alecaframe-token-section');
 const alecaFrameTokenInput = document.getElementById('alecaframe-token-input');
 const saveAlecaFrameTokenButton = document.getElementById('save-alecaframe-token-button');
 const alecaFrameTokenMessage = document.getElementById('alecaframe-token-message');
-
 const statsSection = document.getElementById('stats-section');
 const generalStatsDisplay = document.getElementById('general-stats-display');
 const relicInventorySection = document.getElementById('relic-inventory-section');
 const relicInventoryGrid = document.getElementById('relic-inventory-grid');
 const relicTooltip = document.getElementById('relic-tooltip');
-
 const settingsModal = document.getElementById('settings-modal');
 const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
-
 const changeApiTokenButton = document.getElementById('change-api-token-button');
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
 const cancelChangeTokenButton = document.getElementById('cancel-change-token-button');
 const changeTokenMessage = document.getElementById('change-token-message');
-
 const lightModeToggle = document.getElementById('light-mode-toggle');
 const lightModeWarningModal = document.getElementById('lightmode-warning-modal');
-const alarmOverlay = document.getElementById('alarm-overlay'); // NEU für Light Mode Alarm
-
+const alarmOverlay = document.getElementById('alarm-overlay');
 
 // --- Hilfsfunktionen ---
 function showApiLoader() { apiLoader.classList.remove('hidden'); }
@@ -81,58 +75,63 @@ function lightenHexColor(hex, percent) {
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
-let originalCssVars = {}; // Zum Speichern der originalen CSS-Variablen für Light Mode Reset
+let originalCssVars = {};
+let originalAccentColor = '';
 
 function applyAccentColor(primaryColor, isLightModeTransition = false) {
     const secondaryColor = lightenHexColor(primaryColor, 40);
-
-    if (!isLightModeTransition) { // Nur speichern, wenn es keine temporäre Light-Mode Farbe ist
+    if (!isLightModeTransition) {
         localStorage.setItem('accentColor', primaryColor);
     }
-
     document.documentElement.style.setProperty('--primary-accent', primaryColor);
     document.documentElement.style.setProperty('--secondary-accent', secondaryColor);
     document.documentElement.style.setProperty('--primary-accent-rgb', hexToRgb(primaryColor));
-
     document.querySelectorAll('.panel').forEach(panel => {
-        // Wenn im Light Mode, könnten Panel-Farben anders sein, hier aber erstmal Standard-Logik
-        panel.style.borderColor = `rgba(${hexToRgb(primaryColor)}, 0.3)`;
-        panel.style.boxShadow = `0 0 15px 0px rgba(${hexToRgb(primaryColor)}, 0.2)`;
+        if (!isLightModeTransition || (isLightModeTransition && !document.body.classList.contains("light-mode-active"))) { // Nur anpassen, wenn nicht im Light Mode oder Light Mode wird gerade beendet
+             panel.style.borderColor = `rgba(${hexToRgb(primaryColor)}, 0.3)`;
+             panel.style.boxShadow = `0 0 15px 0px rgba(${hexToRgb(primaryColor)}, 0.2)`;
+        }
     });
 
-    if (amChartsInstances.credits) {
+    // JS Fehler Fix: Prüfen ob Chart Instanz und Serie existieren
+    if (amChartsInstances.credits && amChartsInstances.credits.series && amChartsInstances.credits.series.getIndex(0)) {
         const creditsSeries = amChartsInstances.credits.series.getIndex(0);
-        if (creditsSeries) {
-            const amPrimaryColor = am5.color(primaryColor);
-            creditsSeries.set("stroke", amPrimaryColor);
-            creditsSeries.set("fill", amPrimaryColor);
-            const scrollbarX = amChartsInstances.credits.get("scrollbarX");
-            if (scrollbarX) {
-                 scrollbarX.thumb.setAll({ fill: amPrimaryColor, fillOpacity: 0.2 });
-                 scrollbarX.startGrip.setAll({ fill: amPrimaryColor });
-                 scrollbarX.endGrip.setAll({ fill: amPrimaryColor });
-            }
+        const amPrimaryColor = am5.color(primaryColor);
+        creditsSeries.set("stroke", amPrimaryColor);
+        creditsSeries.set("fill", amPrimaryColor);
+        const scrollbarX = amChartsInstances.credits.get("scrollbarX");
+        if (scrollbarX && scrollbarX.thumb) { // Zusätzliche Prüfung für thumb
+             scrollbarX.thumb.setAll({ fill: amPrimaryColor, fillOpacity: 0.2 });
+             if(scrollbarX.startGrip) scrollbarX.startGrip.setAll({ fill: amPrimaryColor });
+             if(scrollbarX.endGrip) scrollbarX.endGrip.setAll({ fill: amPrimaryColor });
         }
+    } else {
+        // console.warn("Credits Chart oder Serie noch nicht initialisiert für Farbanpassung.");
     }
 }
 function loadAccentColor() {
     const savedColor = localStorage.getItem('accentColor');
-    applyAccentColor(savedColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim());
-}
-function normalizeRelicName(name) {
-    if (typeof name !== 'string') return '';
-    return name.toLowerCase()
-               .replace(/\s*\([\w\s-]+\)\s*$/, '')
-               .replace(/\s+relic$/i, '')
-               .replace(/prime vault/gi, '')
-               .replace(/vaulted/gi, '')
-               .replace(/\[|\]/g, '')
-               .replace(/\s+/g, ' ')
-               .trim();
+    originalAccentColor = savedColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim(); // Original für Reset speichern
+    applyAccentColor(originalAccentColor);
 }
 
+// --- Überarbeitete Relikt-Namen Normalisierungsfunktion ---
+const RELIC_TIERS_FOR_NORMALIZATION = ["lith", "meso", "neo", "axi", "requiem"];
+function normalizeRelicNameForMatching(name) {
+    if (typeof name !== 'string') return '';
+    let lcName = name.toLowerCase();
+    // Entferne (Intact), (Exceptional) etc. und "Relic" am Ende
+    lcName = lcName.replace(/\s*\([\w\s-]+\)\s*$/, '').replace(/\s+relic$/, '').trim();
+    // Entferne "Prime Vault", "Vaulted" und Klammern
+    lcName = lcName.replace(/prime vault|vaulted|[\[\]]/gi, '').trim();
+    // Standardisiere Leerzeichen
+    lcName = lcName.replace(/\s+/g, ' ').trim();
+    return lcName;
+}
+
+
 async function init() {
-    loadAccentColor();
+    loadAccentColor(); // Muss vor applyAccentColor in toggleLightMode aufgerufen werden
     setTimeout(() => {
         systemBootLoader.style.opacity = '0';
         systemBootLoader.style.pointerEvents = 'none';
@@ -147,23 +146,20 @@ async function init() {
     loginForm.addEventListener('submit', handleLogin);
     registerForm.addEventListener('submit', handleRegister);
     logoutButton.addEventListener('click', handleLogout);
-
     settingsButton.addEventListener('click', openSettingsModal);
     closeSettingsModalButton.addEventListener('click', closeSettingsModal);
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
-
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
     if (changeApiTokenButton) changeApiTokenButton.addEventListener('click', openChangeTokenModal);
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
-
     if (lightModeToggle) lightModeToggle.addEventListener('change', toggleLightMode);
 
     await loadWfcdRelicData();
     await checkUserSession();
 }
 
-async function handleLogin(event) {
+async function handleLogin(event) { /* ... (Code bleibt gleich) ... */
     event.preventDefault(); displayMessage(loginMessage, '');
     const body = { username: loginForm.username.value, password: loginForm.password.value };
     showApiLoader();
@@ -175,7 +171,7 @@ async function handleLogin(event) {
         } else { displayMessage(loginMessage, data.error || 'Login fehlgeschlagen.', true); }
     } catch (e) { displayMessage(loginMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-async function handleRegister(event) {
+async function handleRegister(event) { /* ... (Code bleibt gleich) ... */
     event.preventDefault(); displayMessage(registerMessage, '');
     const body = { username: registerForm.username.value, password: registerForm.password.value, access_code: registerForm.access_code.value };
     showApiLoader();
@@ -187,7 +183,7 @@ async function handleRegister(event) {
         } else { displayMessage(registerMessage, data.error || 'Registrierung fehlgeschlagen.', true); }
     } catch (e) { displayMessage(registerMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-async function checkUserSession() {
+async function checkUserSession() { /* ... (Code bleibt gleich) ... */
     showApiLoader();
     try {
         const response = await fetch(`${API_BASE_URL}?action=check_session`, { method: 'GET', credentials: 'same-origin' });
@@ -195,7 +191,7 @@ async function checkUserSession() {
         if (response.ok && data.loggedIn) { currentUser = data.user; await afterLogin(); } else { showView(loginSection); }
     } catch (e) { showView(loginSection); } finally { hideApiLoader(); }
 }
-async function afterLogin() {
+async function afterLogin() { /* ... (Code bleibt gleich) ... */
     if (!currentUser) return;
     usernameDisplay.textContent = currentUser.username;
     showView(dashboardSection);
@@ -209,7 +205,7 @@ async function afterLogin() {
         displayMessage(alecaFrameTokenMessage, 'AlecaFrame Token eingeben.', false);
     }
 }
-async function handleLogout() {
+async function handleLogout() { /* ... (Code bleibt gleich) ... */
     showApiLoader();
     try { await fetch(`${API_BASE_URL}?action=logout`, { method: 'POST', credentials: 'same-origin' }); } catch (e) { console.error('Logout Fehler:', e); }
     finally {
@@ -224,7 +220,7 @@ async function handleLogout() {
         hideApiLoader();
     }
 }
-async function handleSaveAndLoadAlecaFrameToken(event, tokenValueFromModal = null) {
+async function handleSaveAndLoadAlecaFrameToken(event, tokenValueFromModal = null) { /* ... (Code bleibt gleich) ... */
     if(event) event.preventDefault();
     const token = tokenValueFromModal || alecaFrameTokenInput.value.trim();
     const messageElement = tokenValueFromModal ? changeTokenMessage : alecaFrameTokenMessage;
@@ -250,7 +246,7 @@ async function handleSaveAndLoadAlecaFrameToken(event, tokenValueFromModal = nul
     }
 }
 
-function openChangeTokenModal() {
+function openChangeTokenModal() { /* ... (Code bleibt gleich) ... */
     if (changeTokenModal) {
         newApiTokenInput.value = currentUser?.api_token || '';
         displayMessage(changeTokenMessage, '');
@@ -258,15 +254,15 @@ function openChangeTokenModal() {
         newApiTokenInput.focus();
     }
 }
-function closeChangeTokenModal() {
+function closeChangeTokenModal() { /* ... (Code bleibt gleich) ... */
     if (changeTokenModal) changeTokenModal.classList.add('hidden');
 }
-async function handleChangeTokenFormSubmit(event) {
+async function handleChangeTokenFormSubmit(event) { /* ... (Code bleibt gleich) ... */
     event.preventDefault();
     await handleSaveAndLoadAlecaFrameToken(null, newApiTokenInput.value.trim());
 }
 
-async function loadAlecaFrameData() {
+async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
     displayMessage(alecaFrameTokenMessage, '');
     showApiLoader();
     statsSection.classList.remove('hidden');
@@ -322,7 +318,7 @@ async function loadAlecaFrameData() {
     }
 }
 
-function displayGeneralStats(latestDataPoint) {
+function displayGeneralStats(latestDataPoint) { /* ... (Code bleibt gleich) ... */
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -347,7 +343,7 @@ function createCurrencyCharts(generalDataPoints) {
         const chartData = dataArray.map(item => ({ date: new Date(item.ts).getTime(), value: parseInt(item[valueFieldName]) || 0 })).sort((a,b) => a.date - b.date);
         let root = am5.Root.new(chartContainer);
         amChartsInstances[currencyName.toLowerCase()] = root;
-        if (root.logo) root.logo.set("disabled", true);
+        if (root.logo) root.logo.set("disabled", true);  // Korrigierte Logo-Entfernung
         root.setThemes([am5themes_Animated.new(root), am5themes_Dark.new(root)]);
         root.interfaceColors.setAll({ "background": am5.color(0x00000000), "text": am5.color(0xe0e0e0), "grid": am5.color(0x333333), "secondaryButtonText": am5.color(0xe0e0e0) });
         let chart = root.container.children.push(am5xy.XYChart.new(root, { panX: true, panY: false, wheelX: "panX", wheelY: "zoomX", pinchZoomX: true, layout: root.verticalLayout, maxTooltipDistance: 0 }));
@@ -371,6 +367,7 @@ function createCurrencyCharts(generalDataPoints) {
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
+// --- WFCD Item Database ---
 async function loadWfcdRelicData() {
     if (wfcdRelicMap.size > 0) {
         console.log("WFCD Relic Map bereits initialisiert.");
@@ -385,11 +382,20 @@ async function loadWfcdRelicData() {
 
         wfcdRelicMap.clear();
         itemsArray.forEach(item => {
-            const normalizedKey = normalizeRelicName(item.name);
-            if (normalizedKey) {
+            // WFCD item.name ist z.B. "Lith A1 Relic"
+            // Wir wollen einen Schlüssel wie "lith a1"
+            const nameParts = item.name.toLowerCase().split(' ');
+            if (RELIC_TIERS_FOR_NORMALIZATION.includes(nameParts[0]) && nameParts.length >= 2) {
+                const normalizedKey = `${nameParts[0]} ${nameParts[1]}`;
                 wfcdRelicMap.set(normalizedKey, item);
             } else {
-                console.warn(`Konnte keinen normalisierten Schlüssel für WFCD Item generieren: ${item.name}`);
+                 // Fallback für andere Namensstrukturen oder um mehr Flexibilität zu bieten
+                const genericNormalizedKey = normalizeRelicNameForMatching(item.name);
+                if (genericNormalizedKey && !wfcdRelicMap.has(genericNormalizedKey)) { // Nur hinzufügen, wenn nicht schon durch spezifischere Methode erfasst
+                    wfcdRelicMap.set(genericNormalizedKey, item);
+                } else if (!genericNormalizedKey) {
+                    console.warn(`Konnte keinen normalisierten Schlüssel für WFCD Item generieren: ${item.name}`);
+                }
             }
         });
         console.log('WFCD Relic Map initialisiert:', wfcdRelicMap.size, "Einträge");
@@ -404,6 +410,7 @@ async function loadWfcdRelicData() {
         }
     } finally { hideApiLoader(); }
 }
+
 function parseAndDisplayRelicInventory(base64ApiResponse) {
     relicInventoryGrid.innerHTML = '';
     try {
@@ -412,11 +419,9 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
         try {
             actualBase64String = JSON.parse(base64ApiResponse);
             if (typeof actualBase64String !== 'string') {
-                console.warn('Relikt-Antwort (nach JSON.parse) ist kein String. Typ:', typeof actualBase64String, ". Verwende Original-Antwort.");
                 actualBase64String = base64ApiResponse;
             }
         } catch (e) {
-            console.warn('JSON.parse der Relikt-Antwort fehlgeschlagen, verwende direkten String als Base64. Fehler:', e);
             actualBase64String = base64ApiResponse;
         }
         if (!actualBase64String) throw new Error("Konnte keinen Base64-String aus Relikt-Antwort extrahieren.");
@@ -437,7 +442,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
         console.log(`[RelicParse] Erwarte ${numRelicTypes} verschiedene Relikttypen von AlecaFrame.`);
         const relicTierApiMap = ["Lith", "Meso", "Neo", "Axi", "Requiem"];
         for (let i = 0; i < numRelicTypes; i++) {
-            if (offset + 9 > bytes.length) { console.error("[RelicParse] Nicht genug Daten für Relikt #", i, "Offset:", offset, "Benötigt:", 9, "Verfügbar:", bytes.length - offset); break; }
+            if (offset + 9 > bytes.length) { console.error("[RelicParse] Nicht genug Daten für Relikt #", i); break; }
             const typeByte = dataView.getUint8(offset); offset += 1;
             const refinementByte = dataView.getUint8(offset); offset += 1;
             let nameChars = [];
@@ -446,16 +451,21 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
             const alecaRelicShortName = nameChars.join('').trim();
             const count = dataView.getUint32(offset, true); offset += 4;
             const alecaTierName = relicTierApiMap[typeByte] || "UnknownTier";
-            const alecaFullNameForNormalization = `${alecaTierName} ${alecaRelicShortName}`;
-            const normalizedAlecaName = normalizeRelicName(alecaFullNameForNormalization);
-            const wfcdDetail = wfcdRelicMap.get(normalizedAlecaName);
+
+            // Erzeuge den normalisierten Schlüssel aus AlecaFrame-Daten direkt im Format "tier shortname"
+            const normalizedAlecaKey = `${alecaTierName.toLowerCase()} ${alecaRelicShortName.toLowerCase()}`;
+
+            console.log(`[RelicParse] Suche Aleca: Tier='${alecaTierName}', Short='${alecaRelicShortName}', NormKey='${normalizedAlecaKey}', Count=${count}`);
+
+            const wfcdDetail = wfcdRelicMap.get(normalizedAlecaKey);
             if (wfcdDetail) {
+                console.log(`[RelicParse] Match für '${normalizedAlecaKey}': ${wfcdDetail.name}`);
                 userRelicInventory.push({ ...wfcdDetail, count: count });
             } else {
-                console.warn(`[RelicParse] Kein WFCD Detail für normalisierten Namen "${normalizedAlecaName}" (Original Aleca: ${alecaFullNameForNormalization}) gefunden.`);
+                console.warn(`[RelicParse] Kein WFCD Detail für normalisierten Schlüssel "${normalizedAlecaKey}" (Original Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
                 userRelicInventory.push({
-                    name: alecaFullNameForNormalization,
-                    uniqueName: `unknown_${normalizedAlecaName.replace(/\s+/g, '_')}`,
+                    name: `${alecaTierName} ${alecaRelicShortName}`,
+                    uniqueName: `unknown_${normalizedAlecaKey.replace(/\s+/g, '_')}`,
                     tier: alecaTierName, imageName: '', rewards: [], vaulted: false, count: count,
                 });
             }
@@ -467,7 +477,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
         userRelicInventory = null;
     }
 }
-function displayRelics(relicsToDisplay) {
+function displayRelics(relicsToDisplay) { /* ... (Code bleibt gleich) ... */
     if (!relicsToDisplay || relicsToDisplay.length === 0) {
         relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Keine Relikte zum Anzeigen.</p>'; return;
     }
@@ -493,7 +503,7 @@ function displayRelics(relicsToDisplay) {
         relicInventoryGrid.appendChild(relicElement);
     });
 }
-function showRelicTooltip(event, relicData) {
+function showRelicTooltip(event, relicData) { /* ... (Code bleibt gleich) ... */
     if (!relicData) return;
     const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
     let tooltipContent = `<h5 class="font-bold text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h5>`;
@@ -520,11 +530,21 @@ function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
 function moveRelicTooltip(event) {
     if (relicTooltip.classList.contains('hidden')) return;
     const { clientX:mX, clientY:mY } = event; const rect = relicTooltip.getBoundingClientRect();
-    let x = mX + 20, y = mY + 20;
-    if (x + rect.width > window.innerWidth - 10) x = mX - rect.width - 20;
-    if (y + rect.height > window.innerHeight - 10) y = mY - rect.height - 20;
-    if (x < 10) x = 10; if (y < 10) y = 10;
-    relicTooltip.style.left = `${x}px`; relicTooltip.style.top = `${y}px`;
+    // Positioniere den Tooltip direkt rechts von der Maus, es sei denn, er geht über den Rand hinaus
+    let x = mX + 15;
+    let y = mY + 15;
+
+    if (x + rect.width > window.innerWidth - 10) { // Wenn rechts über den Rand
+        x = mX - rect.width - 15; // Links von der Maus
+    }
+    if (y + rect.height > window.innerHeight - 10) { // Wenn unten über den Rand
+        y = window.innerHeight - rect.height - 10; // Am unteren Rand ausrichten
+    }
+    if (x < 10) x = 10; // Verhindere, dass es links über den Rand geht
+    if (y < 10) y = 10; // Verhindere, dass es oben über den Rand geht
+
+    relicTooltip.style.left = `${x}px`;
+    relicTooltip.style.top = `${y}px`;
 }
 
 function openSettingsModal() {
@@ -534,79 +554,97 @@ function openSettingsModal() {
 function closeSettingsModal() { if(settingsModal) settingsModal.classList.add('hidden'); }
 
 // --- Light Mode Easter Egg ---
-const originalCssProps = {
-    '--bg-deep-space': '', '--bg-surface': '', '--text-primary': '',
-    '--text-secondary': '', 'bodyBg': '', 'bodyColor': ''
-};
 let lightModeActive = false;
 let alarmInterval = null;
 
 function toggleLightMode() {
-    if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) return;
+    if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) {
+        console.error("Light Mode Elemente nicht gefunden!");
+        return;
+    }
 
     if (lightModeToggle.checked && !lightModeActive) {
         lightModeActive = true;
+
         // Originalfarben speichern
-        originalCssProps['--bg-deep-space'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-deep-space');
-        originalCssProps['--bg-surface'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-surface');
-        originalCssProps['--text-primary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
-        originalCssProps['--text-secondary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary');
-        originalCssProps['bodyBg'] = document.body.style.backgroundColor;
-        originalCssProps['bodyColor'] = document.body.style.color;
-        const storedAccent = localStorage.getItem('accentColor') || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim();
-        originalCssProps['accent'] = storedAccent;
+        originalCssVars['--bg-deep-space'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-deep-space').trim();
+        originalCssVars['--bg-surface'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-surface').trim();
+        originalCssVars['--text-primary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
+        originalCssVars['--text-secondary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+        originalCssVars['bodyBg'] = document.body.style.backgroundColor; // Könnte leer sein, wenn über CSS Var gesetzt
+        originalCssVars['bodyColor'] = document.body.style.color;   // Könnte leer sein
+        originalCssVars['accent'] = localStorage.getItem('accentColor') || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim();
 
-        // Helle Farben setzen
-        document.documentElement.style.setProperty('--bg-deep-space', '#e0e0e0');
-        document.documentElement.style.setProperty('--bg-surface', '#f5f5f5');
-        document.documentElement.style.setProperty('--text-primary', '#1a1a1a');
-        document.documentElement.style.setProperty('--text-secondary', '#444444');
-        document.body.style.backgroundColor = '#e0e0e0';
-        document.body.style.color = '#1a1a1a';
-        applyAccentColor('#757575', true); // Temporäre graue Akzentfarbe für Light Mode
+        // 1. Kurz komplett hell
+        document.body.style.backgroundColor = '#FFFFFF';
+        document.body.style.color = '#000000';
+        document.documentElement.style.setProperty('--bg-deep-space', '#f0f0f0');
+        document.documentElement.style.setProperty('--bg-surface', '#ffffff');
+        document.documentElement.style.setProperty('--text-primary', '#111111');
+        document.documentElement.style.setProperty('--text-secondary', '#333333');
+        applyAccentColor('#888888', true); // Temporärer grauer Akzent
 
-        // Panels anpassen
         document.querySelectorAll('.panel').forEach(p => {
-            p.style.backgroundColor = 'rgba(255,255,255,0.85)';
-            p.style.borderColor = 'rgba(0,0,0,0.2)';
+            p.style.backgroundColor = 'rgba(230, 230, 230, 0.85)'; // Heller Panel Hintergrund
+            p.style.borderColor = 'rgba(100, 100, 100, 0.2)';
         });
 
-        lightModeWarningModal.classList.remove('hidden');
-        alarmOverlay.style.display = 'block';
-        let isRedAlarm = true;
-        if(alarmInterval) clearInterval(alarmInterval); // Sicherheitshalber alten Interval löschen
-        alarmInterval = setInterval(() => {
-            alarmOverlay.style.backgroundColor = isRedAlarm ? 'rgba(255, 0, 0, 0.2)' : 'transparent';
-            isRedAlarm = !isRedAlarm;
-        }, 200);
-
-        closeSettingsModalButton.style.pointerEvents = 'none';
-
         setTimeout(() => {
-            clearInterval(alarmInterval);
-            alarmOverlay.style.display = 'none';
-            lightModeWarningModal.classList.add('hidden');
+            // 2. Alarm-Effekt starten
+            alarmOverlay.style.display = 'block';
+            let isRedAlarm = true;
+            if(alarmInterval) clearInterval(alarmInterval);
+            alarmInterval = setInterval(() => {
+                alarmOverlay.style.backgroundColor = isRedAlarm ? 'rgba(255, 0, 0, 0.3)' : 'transparent';
+                isRedAlarm = !isRedAlarm;
+            }, 200);
 
-            // Ursprüngliche Farben wiederherstellen
-            document.documentElement.style.setProperty('--bg-deep-space', originalCssProps['--bg-deep-space']);
-            document.documentElement.style.setProperty('--bg-surface', originalCssProps['--bg-surface']);
-            document.documentElement.style.setProperty('--text-primary', originalCssProps['--text-primary']);
-            document.documentElement.style.setProperty('--text-secondary', originalCssProps['--text-secondary']);
-            document.body.style.backgroundColor = originalCssProps['bodyBg'];
-            document.body.style.color = originalCssProps['bodyColor'];
-            document.querySelectorAll('.panel').forEach(p => {
-                p.style.backgroundColor = ''; // Zurücksetzen auf CSS-gesteuert
-                 p.style.borderColor = '';
-            });
-            applyAccentColor(originalCssProps['accent']); // Ursprüngliche Akzentfarbe
+            // 3. Warn-Modal anzeigen
+            if(lightModeWarningModal) lightModeWarningModal.classList.remove('hidden');
+            if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'none';
 
-            if (lightModeToggle) lightModeToggle.checked = false;
-            closeSettingsModalButton.style.pointerEvents = 'auto';
-            lightModeActive = false;
-        }, 5000);
+            // 4. Timer zum Zurücksetzen
+            setTimeout(() => {
+                clearInterval(alarmInterval);
+                alarmOverlay.style.display = 'none';
+                if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
+
+                document.documentElement.style.setProperty('--bg-deep-space', originalCssVars['--bg-deep-space']);
+                document.documentElement.style.setProperty('--bg-surface', originalCssVars['--bg-surface']);
+                document.documentElement.style.setProperty('--text-primary', originalCssVars['--text-primary']);
+                document.documentElement.style.setProperty('--text-secondary', originalCssVars['--text-secondary']);
+                document.body.style.backgroundColor = originalCssVars['bodyBg'] || ''; // Auf CSS Var zurücksetzen
+                document.body.style.color = originalCssVars['bodyColor'] || '';       // Auf CSS Var zurücksetzen
+
+                document.querySelectorAll('.panel').forEach(p => {
+                    p.style.backgroundColor = '';
+                    p.style.borderColor = '';
+                });
+                applyAccentColor(originalCssVars['accent']);
+
+                if (lightModeToggle) lightModeToggle.checked = false;
+                if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
+                lightModeActive = false;
+            }, 4000); // 4 Sekunden Alarm
+        }, 700); // 0.7 Sekunden bis Alarm startet
+
+    } else if (!lightModeToggle.checked && lightModeActive) {
+        // Falls der User es manuell ausschaltet, während der Effekt läuft (sollte nicht passieren wegen pointerEvents)
+        clearInterval(alarmInterval);
+        alarmOverlay.style.display = 'none';
+        if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
+        document.documentElement.style.setProperty('--bg-deep-space', originalCssVars['--bg-deep-space']);
+        document.documentElement.style.setProperty('--bg-surface', originalCssVars['--bg-surface']);
+        document.documentElement.style.setProperty('--text-primary', originalCssVars['--text-primary']);
+        document.documentElement.style.setProperty('--text-secondary', originalCssVars['--text-secondary']);
+        document.body.style.backgroundColor = originalCssVars['bodyBg'] || '';
+        document.body.style.color = originalCssVars['bodyColor'] || '';
+        document.querySelectorAll('.panel').forEach(p => { p.style.backgroundColor = '';  p.style.borderColor = ''; });
+        applyAccentColor(originalCssVars['accent']);
+        if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
+        lightModeActive = false;
     }
 }
-
 
 import { initThreeJS } from './threejs-background.js';
 function initThreeJSBackground() {
