@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warframe Arsenal Interface</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Exo+2:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <!-- amCharts 5 via CDN -->
+    <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/xy.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+    <script src="https://cdn.amcharts.com/lib/5/themes/Dark.js"></script> <!-- Optional: Dark theme for amCharts -->
+
+    <!-- Three.js via CDN -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Three.js Background Module -->
+    <!-- <script type="module" src="threejs-background.js"></script> --> <!-- Wird von app.js importiert -->
+
+    <style>
+        :root {
+            --bg-deep-space: #05080a;
+            --bg-surface: #0a1014;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --primary-accent: #39ff14; /* Standard Grün */
+            --secondary-accent: #9eff8a; /* Abgeleitet von Primärfarbe */
+            --font-heading: 'Orbitron', sans-serif;
+            --font-body: 'Exo 2', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-deep-space);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            overflow-x: hidden; /* Verhindert horizontales Scrollen durch Animationen */
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            color: var(--text-primary);
+        }
+
+        .panel {
+            background-color: rgba(10, 16, 20, 0.8); /* var(--bg-surface) mit Transparenz */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px); /* Für Safari */
+            border: 1px solid rgba(57, 255, 20, 0.3); /* Akzentfarbe mit Transparenz */
+            /* clip-path: polygon(0 5%, 5% 0, 95% 0, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0 95%); */
+            /* Vereinfachter Clip-Path für bessere Kompatibilität und weniger scharfe Kanten */
+            clip-path: polygon(0 10px, 10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px));
+            padding: 1.5rem; /* Tailwind p-6 */
+            box-shadow: 0 0 15px 0px rgba(57, 255, 20, 0.2); /* Subtiler Leuchteffekt */
+        }
+
+        .interactive-element {
+            transition: all 0.3s ease-in-out;
+        }
+        .interactive-element:hover, .interactive-element:focus {
+            box-shadow: 0 0 15px 2px var(--primary-accent), 0 0 25px 5px var(--secondary-accent, #9eff8a);
+            /* filter: brightness(1.2); */
+        }
+
+        .custom-input {
+            background-color: rgba(var(--bg-surface-rgb,10,16,20), 0.9);
+            border: 1px solid var(--primary-accent);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+        }
+        .custom-input::placeholder {
+            color: var(--text-secondary);
+        }
+        .custom-input:focus {
+            border-color: var(--secondary-accent);
+            box-shadow: 0 0 8px var(--primary-accent);
+            outline: none;
+        }
+
+        .custom-button {
+            background-color: var(--primary-accent);
+            color: var(--bg-deep-space);
+            font-family: var(--font-heading);
+            clip-path: polygon(0 5px, 5px 0, calc(100% - 5px) 0, 100% 5px, 100% calc(100% - 5px), calc(100% - 5px) 100%, 5px 100%, 0 calc(100% - 5px));
+            border: none;
+            padding: 0.75rem 1.5rem;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+        .custom-button:hover {
+             background-color: var(--secondary-accent);
+             color: var(--bg-deep-space);
+             box-shadow: 0 0 10px var(--primary-accent);
+        }
+        .custom-button-secondary {
+            background-color: transparent;
+            color: var(--primary-accent);
+            border: 1px solid var(--primary-accent);
+        }
+        .custom-button-secondary:hover {
+            background-color: rgba(var(--primary-accent-rgb), 0.1); /* Primary accent with alpha */
+            color: var(--secondary-accent);
+        }
+
+
+        /* Ladeanimationen */
+        #system-boot-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg-deep-space);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-accent);
+        }
+        #system-boot-loader .boot-text {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            margin-top: 20px;
+        }
+        /* Einfacher Spinner */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-accent);
+            width: 40px;
+            height: 40px;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #api-loader {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9990;
+            padding: 10px;
+            /* display: none; */ /* Wird per JS gesteuert */
+        }
+
+        /* Tailwind Konfiguration für Farben (wird von JS aktualisiert) */
+        /* Diese ist hier nur zur Referenz, da Tailwind CSS via CDN genutzt wird, */
+        /* erfolgt die dynamische Anpassung über CSS Variablen. */
+        /* Wir definieren --primary-accent-rgb und --bg-surface-rgb für rgba() Nutzung */
+        /* Diese müssen in JS aktualisiert werden, wenn die Hauptfarben geändert werden */
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 selection:bg-primary-accent selection:text-bg-deep-space">
+
+    <!-- Three.js Canvas Container -->
+    <div id="threejs-canvas-container" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1;"></div>
+
+    <!-- System Boot Loader -->
+    <div id="system-boot-loader">
+        <div class="spinner"></div>
+        <p class="boot-text">SYSTEM BOOTING...</p>
+        <p class="text-xs text-text-secondary mt-2">Loading Warframe Arsenal Interface v0.1</p>
+    </div>
+
+    <!-- API Lade-Indikator -->
+    <div id="api-loader" class="hidden panel">
+        <div class="flex items-center space-x-2">
+            <div class="spinner !w-6 !h-6"></div>
+            <span class="text-sm text-text-secondary">Lade Daten...</span>
+        </div>
+    </div>
+
+    <!-- Hauptcontainer -->
+    <main id="app-container" class="w-full max-w-6xl mx-auto opacity-0 transition-opacity duration-1000">
+
+        <!-- Login Sektion -->
+        <section id="login-section" class="panel max-w-md mx-auto">
+            <h2 class="text-2xl font-heading mb-6 text-center">ARSENAL LOGIN</h2>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label for="login-username" class="block text-sm font-medium text-text-secondary">Benutzername</label>
+                    <input type="text" id="login-username" name="username" required class="custom-input mt-1 block w-full rounded-md shadow-sm py-2 px-3">
+                </div>
+                <div>
+                    <label for="login-password" class="block text-sm font-medium text-text-secondary">Passwort</label>
+                    <input type="password" id="login-password" name="password" required class="custom-input mt-1 block w-full rounded-md shadow-sm py-2 px-3">
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="custom-button w-full interactive-element">Anmelden</button>
+                </div>
+            </form>
+            <p class="mt-6 text-center text-sm">
+                <span class="text-text-secondary">Noch kein Konto?</span>
+                <button id="show-register-button" class="font-medium text-primary-accent hover:text-secondary-accent">Registrieren</button>
+            </p>
+            <div id="login-message" class="mt-4 text-center text-sm"></div>
+        </section>
+
+        <!-- Registrierungs Sektion (standardmäßig ausgeblendet) -->
+        <section id="register-section" class="panel max-w-md mx-auto hidden">
+            <h2 class="text-2xl font-heading mb-6 text-center">KONTO ERSTELLEN</h2>
+            <form id="register-form" class="space-y-4">
+                <div>
+                    <label for="register-username" class="block text-sm font-medium text-text-secondary">Benutzername</label>
+                    <input type="text" id="register-username" name="username" required class="custom-input mt-1 block w-full rounded-md shadow-sm py-2 px-3">
+                </div>
+                <div>
+                    <label for="register-password" class="block text-sm font-medium text-text-secondary">Passwort (min. 8 Zeichen)</label>
+                    <input type="password" id="register-password" name="password" required class="custom-input mt-1 block w-full rounded-md shadow-sm py-2 px-3">
+                </div>
+                <div>
+                    <label for="register-access-code" class="block text-sm font-medium text-text-secondary">Zugangscode ("Chelocord")</label>
+                    <input type="text" id="register-access-code" name="access_code" required class="custom-input mt-1 block w-full rounded-md shadow-sm py-2 px-3">
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="custom-button w-full interactive-element">Registrieren</button>
+                </div>
+            </form>
+            <p class="mt-6 text-center text-sm">
+                <span class="text-text-secondary">Bereits ein Konto?</span>
+                <button id="show-login-button" class="font-medium text-primary-accent hover:text-secondary-accent">Anmelden</button>
+            </p>
+            <div id="register-message" class="mt-4 text-center text-sm"></div>
+        </section>
+
+        <!-- Dashboard Sektion (standardmäßig ausgeblendet) -->
+        <section id="dashboard-section" class="hidden w-full">
+            <header class="flex flex-col sm:flex-row justify-between sm:items-center mb-6 panel space-y-3 sm:space-y-0">
+                <div class="text-center sm:text-left">
+                    <h1 class="text-2xl sm:text-3xl font-heading">Warframe Arsenal</h1>
+                    <p class="text-sm sm:text-base text-text-secondary">Willkommen, <span id="username-display">Tenno</span>!</p>
+                </div>
+                <div class="flex items-center justify-center sm:justify-end space-x-2">
+                    <button id="settings-button" title="Einstellungen" class="p-2 rounded-md hover:bg-bg-surface interactive-element">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-primary-accent">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.646.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 1.905c-.007.379.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.333.183-.582.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.759 6.759 0 010-1.905c.007-.379-.137-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                    <button id="logout-button" class="custom-button-secondary interactive-element ml-2">Logout</button>
+                </div>
+            </header>
+
+            <div class="space-y-6">
+                <!-- AlecaFrame Token Eingabe -->
+                <div id="alecaframe-token-section" class="panel">
+                    <h3 class="text-xl font-heading mb-3">AlecaFrame API Token</h3>
+                    <p class="text-sm text-text-secondary mb-2">
+                        Gib hier deinen öffentlichen AlecaFrame Token ein, um deine Statistiken und dein Relikt-Inventar zu laden.
+                        Du findest deinen Token auf <a href="https://stats.alecaframe.com/" target="_blank" rel="noopener noreferrer" class="text-primary-accent hover:underline">stats.alecaframe.com</a> in deinen Einstellungen.
+                    </p>
+                    <div class="flex space-x-2">
+                        <input type="text" id="alecaframe-token-input" placeholder="Dein AlecaFrame Public Token" class="custom-input flex-grow rounded-md shadow-sm py-2 px-3">
+                        <button id="save-alecaframe-token-button" class="custom-button interactive-element">Speichern & Laden</button>
+                    </div>
+                    <div id="alecaframe-token-message" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Statistiken & Charts -->
+                <div id="stats-section" class="panel hidden">
+                    <h3 class="text-xl font-heading mb-4">Währungsübersicht</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div id="credits-chart-container" class="h-64"><p class="text-text-secondary text-center pt-8">Credits Chart lädt...</p></div>
+                        <div id="platinum-chart-container" class="h-64"><p class="text-text-secondary text-center pt-8">Platin Chart lädt...</p></div>
+                        <div id="endo-chart-container" class="h-64"><p class="text-text-secondary text-center pt-8">Endo Chart lädt...</p></div>
+                    </div>
+                    <div id="general-stats-display" class="mt-4">
+                        <!-- Hier werden allgemeine Stats angezeigt -->
+                    </div>
+                </div>
+
+                <!-- Relikt Inventar -->
+                <div id="relic-inventory-section" class="panel hidden">
+                    <h3 class="text-xl font-heading mb-4">Relikt Inventar</h3>
+                    <div id="relic-inventory-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <!-- Relikte werden hier dynamisch eingefügt -->
+                    </div>
+                    <div id="relic-tooltip" class="hidden absolute panel z-50 p-3 text-sm pointer-events-none">
+                        <!-- Tooltip Inhalt -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Einstellungs-Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+        <div class="panel max-w-sm w-full">
+            <div id="settings-access-code-section">
+                <h3 class="text-xl font-heading mb-4">Einstellungen freischalten</h3>
+                <p class="text-sm text-text-secondary mb-2">Bitte gib den Freischaltcode ein:</p>
+                <input type="password" id="settings-access-code-input" class="custom-input w-full rounded-md py-2 px-3 mb-3" placeholder="Code">
+                <button id="submit-settings-access-code" class="custom-button w-full interactive-element">Freischalten</button>
+                <div id="settings-access-message" class="mt-2 text-sm text-center"></div>
+            </div>
+
+            <div id="color-picker-section" class="hidden">
+                <h3 class="text-xl font-heading mb-4">Akzentfarbe wählen</h3>
+                <div class="flex justify-around space-x-2">
+                    <button class="color-choice-button p-4 rounded-md flex-1 interactive-element" data-color="#39ff14" style="background-color: #39ff14; color: #05080a;">Grün</button>
+                    <button class="color-choice-button p-4 rounded-md flex-1 interactive-element" data-color="#e602cb" style="background-color: #e602cb; color: #e0e0e0;">Magenta</button>
+                    <button class="color-choice-button p-4 rounded-md flex-1 interactive-element" data-color="#31b78f" style="background-color: #31b78f; color: #05080a;">Türkis</button>
+                </div>
+            </div>
+            <button id="close-settings-modal" class="custom-button-secondary w-full mt-6 interactive-element">Schließen</button>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
