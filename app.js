@@ -125,11 +125,12 @@ async function init() {
     loadAccentColor();
     setTimeout(() => {
         systemBootLoader.style.opacity = '0';
+        systemBootLoader.style.pointerEvents = 'none'; // Verhindert Mausinteraktionen sofort
         setTimeout(() => {
-            systemBootLoader.classList.add('hidden');
+            systemBootLoader.classList.add('hidden'); // Entfernt es aus dem Layout
             appContainer.style.opacity = '1';
-        }, 500);
-    }, 1500);
+        }, 500); // Warte auf Fade-Out Animation
+    }, 1500); // Boot-Dauer
 
     showRegisterButton.addEventListener('click', () => showView(registerSection));
     showLoginButton.addEventListener('click', () => showView(loginSection));
