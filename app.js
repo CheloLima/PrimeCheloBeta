@@ -23,7 +23,7 @@ const registerMessage = document.getElementById('register-message');
 const showRegisterButton = document.getElementById('show-register-button');
 const showLoginButton = document.getElementById('show-login-button');
 const usernameDisplay = document.getElementById('username-display');
-const percentageCompletionDisplay = document.getElementById('percentage-completion-display'); // NEU
+const percentageCompletionDisplay = document.getElementById('percentage-completion-display');
 const logoutButton = document.getElementById('logout-button');
 const settingsButton = document.getElementById('settings-button');
 const alecaFrameTokenSection = document.getElementById('alecaframe-token-section');
@@ -39,12 +39,14 @@ const settingsModal = document.getElementById('settings-modal');
 const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
-const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button');
+
+const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button'); // Button IM Settings Modal
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
 const cancelChangeTokenButton = document.getElementById('cancel-change-token-button');
 const changeTokenMessage = document.getElementById('change-token-message');
+
 const lightModeToggle = document.getElementById('light-mode-toggle');
 const lightModeWarningModal = document.getElementById('lightmode-warning-modal');
 const alarmOverlay = document.getElementById('alarm-overlay');
@@ -159,9 +161,13 @@ async function init() {
     closeSettingsModalButton.addEventListener('click', closeSettingsModal);
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
+
+    // Event-Listener für "API Token ändern" Button IM Settings Modal
     if (openChangeTokenModalButton) openChangeTokenModalButton.addEventListener('click', openChangeTokenModal);
+    // Event-Listener für das Formular im "API Token ändern" Modal
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
+
     if (lightModeToggle) lightModeToggle.addEventListener('change', toggleLightMode);
 
     await loadWfcdRelicData();
@@ -224,7 +230,7 @@ async function handleLogout() { /* ... (Code bleibt gleich) ... */
         generalStatsDisplay.innerHTML = ''; relicInventoryGrid.innerHTML = '';
         alecaFrameTokenInput.value = ''; displayMessage(alecaFrameTokenMessage, '');
         alecaFrameTokenSection.classList.remove('hidden');
-        if(percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'N/A'; // Reset Percentage
+        if(percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'N/A';
         Object.values(amChartsInstances).forEach(chart => chart?.dispose());
         amChartsInstances = { credits: null, platinum: null, endo: null };
         hideApiLoader();
@@ -298,7 +304,7 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
             const statsData = combinedData.statsData;
             const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
             if(statsData.usernameWhenPublic) latestStats.usernameWhenPublic = statsData.usernameWhenPublic;
-            displayGeneralStats(latestStats); // Ruft jetzt die aktualisierte Funktion auf
+            displayGeneralStats(latestStats);
             createCurrencyCharts(statsData.generalDataPoints);
         } else {
             const errorDetail = combinedData.statsData ? `Empfangene Keys: ${Object.keys(combinedData.statsData).join(', ')}` : "Keine StatsData empfangen.";
@@ -345,7 +351,6 @@ function displayGeneralStats(latestDataPoint) {
     html += '</div>';
     generalStatsDisplay.innerHTML = html;
 
-    // PercentageCompletion anzeigen
     if (percentageCompletionDisplay) {
         const completion = latestDataPoint.percentageCompletion;
         if (typeof completion === 'number') {
@@ -390,7 +395,7 @@ function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich) .
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-async function loadWfcdRelicData() { /* ... (Code bleibt gleich) ... */
+async function loadWfcdRelicData() {
     if (wfcdRelicMap.size > 0) { return; }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
@@ -542,34 +547,29 @@ function showRelicTooltip(event, relicData) { /* ... (Code mit korrigierter Sort
 }
 function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
 
-function moveRelicTooltip(event) { // Überarbeitete Logik für Tooltip-Position
-    if (relicTooltip.classList.contains('hidden')) return;
-    const { clientX: mX, clientY: mY } = event;
-    const tooltipWidth = relicTooltip.offsetWidth;
-    const tooltipHeight = relicTooltip.offsetHeight;
-    const scrollX = window.scrollX || window.pageXOffset;
-    const scrollY = window.scrollY || window.pageYOffset;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+// --- Überarbeitete Tooltip Positionierung ---
+function moveRelicTooltip(event) {
+    if (!relicTooltip || relicTooltip.classList.contains('hidden')) return;
 
-    let x = mX + scrollX + 15; // Positioniere rechts von der Maus
-    let y = mY + scrollY + 15; // Positioniere unter der Maus
-
-    // Kollisionserkennung mit Viewport-Rändern
-    if (mX + 15 + tooltipWidth > viewportWidth - 10) { // Wenn rechts über den Rand des Viewports
-        x = mX + scrollX - tooltipWidth - 15; // Positioniere links von der Maus
-    }
-    if (mY + 15 + tooltipHeight > viewportHeight - 10) { // Wenn unten über den Rand des Viewports
-        y = mY + scrollY - tooltipHeight - 15; // Positioniere über der Maus
-    }
-
-    // Sicherstellen, dass es nicht außerhalb des Dokuments links/oben ist (falls gescrollt)
-    if (x < scrollX + 10) x = scrollX + 10;
-    if (y < scrollY + 10) y = scrollY + 10;
+    const x = event.pageX + 15; // pageX/Y für absolute Position im Dokument
+    const y = event.pageY + 15;
 
     relicTooltip.style.left = `${x}px`;
     relicTooltip.style.top = `${y}px`;
+
+    // Optionale Kollisionserkennung mit Viewport, um es ggf. auf die andere Seite der Maus zu schieben
+    const tooltipRect = relicTooltip.getBoundingClientRect(); // Bekomme Dimensionen *nachdem* Inhalt gesetzt wurde
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    if (event.clientX + 15 + tooltipRect.width > viewportWidth - 10) { // mX ist event.clientX
+        relicTooltip.style.left = `${event.pageX - tooltipRect.width - 15}px`;
+    }
+    if (event.clientY + 15 + tooltipRect.height > viewportHeight - 10) { // mY ist event.clientY
+        relicTooltip.style.top = `${event.pageY - tooltipRect.height - 15}px`;
+    }
 }
+
 
 function openSettingsModal() {
     if(colorPickerSection) colorPickerSection.classList.remove('hidden');
