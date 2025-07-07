@@ -331,7 +331,7 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
     }
 }
 
-function displayGeneralStats(latestDataPoint) { /* ... (Code mit percentageCompletionDisplay) ... */
+function displayGeneralStats(latestDataPoint) { /* ... (Code bleibt gleich) ... */
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -501,7 +501,7 @@ function displayRelics(relicsToDisplay) { /* ... (Code bleibt gleich) ... */
         `;
         relicElement.addEventListener('mouseenter', (event) => showRelicTooltip(event, relic));
         relicElement.addEventListener('mouseleave', hideRelicTooltip);
-        relicElement.addEventListener('mousemove', moveRelicTooltip);
+        // mousemove listener für Tooltip-Positionierung wird hier nicht mehr benötigt, da feste Position
         relicElement.addEventListener('focus', (event) => showRelicTooltip(event, relic));
         relicElement.addEventListener('blur', hideRelicTooltip);
         fragment.appendChild(relicElement);
@@ -537,17 +537,12 @@ function showRelicTooltip(event, relicData) { /* ... (Code bleibt gleich) ... */
     } else { tooltipContent += '<p class="text-xs text-text-secondary mt-1">Keine Belohnungsdetails verfügbar für dieses Relikt.</p>'; }
     relicTooltip.innerHTML = tooltipContent;
     relicTooltip.classList.remove('hidden');
-    moveRelicTooltip(event);
+    // moveRelicTooltip(event); // Nicht mehr nötig bei fester Position
 }
 function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
 
-// --- Überarbeitete Tooltip Positionierung ---
-function moveRelicTooltip(event) {
-    if (!relicTooltip || relicTooltip.classList.contains('hidden')) return;
-    // Positioniere direkt am Mauszeiger, ohne Rand-Kollision oder Offset
-    relicTooltip.style.left = `${event.pageX}px`;
-    relicTooltip.style.top = `${event.pageY}px`;
-}
+// moveRelicTooltip Funktion wird entfernt, da der Tooltip jetzt eine feste CSS-Position hat.
+// function moveRelicTooltip(event) { ... }
 
 function openSettingsModal() {
     if(colorPickerSection) colorPickerSection.classList.remove('hidden');
@@ -558,7 +553,7 @@ function closeSettingsModal() { if(settingsModal) settingsModal.classList.add('h
 let lightModeActive = false;
 let alarmInterval = null;
 
-function toggleLightMode() { /* Light Mode Dauer auf ca. 7 Sekunden reduziert */
+function toggleLightMode() { // Light Mode Dauer auf ca. 7 Sekunden
     if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) { return; }
     if (lightModeToggle.checked && !lightModeActive) {
         lightModeActive = true;
@@ -584,7 +579,7 @@ function toggleLightMode() { /* Light Mode Dauer auf ca. 7 Sekunden reduziert */
             p.style.boxShadow = '0 0 10px 0px rgba(150, 150, 150, 0.1)';
         });
 
-        setTimeout(() => { // Start des Alarms nach kurzer Hell-Phase
+        setTimeout(() => {
             alarmOverlay.style.display = 'block';
             let isRedAlarm = true;
             if(alarmInterval) clearInterval(alarmInterval);
@@ -596,7 +591,7 @@ function toggleLightMode() { /* Light Mode Dauer auf ca. 7 Sekunden reduziert */
             if(lightModeWarningModal) lightModeWarningModal.classList.remove('hidden');
             if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'none';
 
-            setTimeout(() => { // Dauer des Alarms + Anzeige der Nachricht (ca. 6.3 Sekunden)
+            setTimeout(() => {
                 clearInterval(alarmInterval);
                 alarmOverlay.style.display = 'none';
                 if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
@@ -619,10 +614,9 @@ function toggleLightMode() { /* Light Mode Dauer auf ca. 7 Sekunden reduziert */
                 if (lightModeToggle) lightModeToggle.checked = false;
                 if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
                 lightModeActive = false;
-            }, 6300); // Ergibt mit den 700ms vorher ca. 7 Sekunden Gesamtdauer
+            }, 6300); // Gesamtdauer jetzt 0.7s (hell) + 6.3s (Alarm) = 7 Sekunden
         }, 700);
     } else if (!lightModeToggle.checked && lightModeActive) {
-        // Manueller Reset Code (bleibt gleich)
         clearInterval(alarmInterval);
         alarmOverlay.style.display = 'none';
         if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');

@@ -312,7 +312,10 @@
                     <div id="relic-inventory-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         <!-- Relikte werden hier dynamisch eingefügt -->
                     </div>
-                    <div id="relic-tooltip" class="hidden absolute panel z-50 p-3 text-sm pointer-events-none">
+                    <!-- Tooltip CSS für feste Positionierung rechts unten anpassen -->
+                    <div id="relic-tooltip"
+                         class="hidden fixed bottom-5 right-5 panel z-50 p-3 text-sm pointer-events-none max-w-xs w-full shadow-xl"
+                         style="max-height: calc(100vh - 40px); overflow-y: auto;">
                         <!-- Tooltip Inhalt -->
                     </div>
                 </div>
@@ -345,10 +348,10 @@
                 </div>
                 <!-- Neuer Button "API Token ändern" im Settings Modal -->
                 <div class="mt-6 border-t border-[var(--border-color)] pt-4">
-                    <button id="open-change-token-modal-button" class="custom-button-secondary w-full interactive-element">API Token ändern</button>
+                    <button id="open-change-token-modal-button" class="custom-button w-full interactive-element">API Token ändern</button>
                 </div>
             </div>
-            <button id="close-settings-modal" class="custom-button-secondary w-full mt-6 interactive-element">Schließen</button>
+            <button id="close-settings-modal" class="custom-button custom-button-secondary w-full mt-6 interactive-element">Schließen</button>
         </div>
     </div>
 
