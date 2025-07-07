@@ -217,9 +217,18 @@ async function loadAlecaFrameData(token) {
         const statsUrl = `${CORS_PROXY_URL}${encodeURIComponent(`https://stats.alecaframe.com/api/stats/public?token=${token}`)}`;
         const statsResponse = await fetch(statsUrl);
         if (!statsResponse.ok) throw new Error(`AlecaFrame Stats API: ${statsResponse.status} ${statsResponse.statusText}`);
-        const statsData = await statsResponse.json();
+
+        const responseText = await statsResponse.text(); // Erst als Text lesen für Debugging
+        console.log("Rohe Antwort von AlecaFrame Stats API (via Proxy):", responseText);
+        const statsData = JSON.parse(responseText); // Dann parsen
+
         if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`);
-        if (!statsData.generalDataPoints) throw new Error("Stats: 'generalDataPoints' fehlt.");
+
+        // Verbesserte Prüfung und Logging
+        if (!statsData.generalDataPoints) {
+            console.error("Fehlende 'generalDataPoints' in AlecaFrame Stats Antwort. Empfangene Keys:", Object.keys(statsData));
+            throw new Error("Stats: 'generalDataPoints' fehlt. Überprüfe die Konsolenausgabe für die empfangene Struktur.");
+        }
 
         const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
         if(statsData.usernameWhenPublic) latestStats.usernameWhenPublic = statsData.usernameWhenPublic;
