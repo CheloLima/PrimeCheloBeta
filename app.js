@@ -222,12 +222,18 @@ async function loadAlecaFrameData(token) {
         console.log("Rohe Antwort von AlecaFrame Stats API (via Proxy):", responseText);
         const statsData = JSON.parse(responseText); // Dann parsen
 
-        if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`);
+        // Prüfe auf Fehlerstruktur vom Proxy/API (basierend auf dem Log-Beispiel)
+        if (statsData.type && statsData.title && statsData.status && statsData.status >= 400) {
+            console.error(`Fehler von API/Proxy erhalten: Status ${statsData.status} - ${statsData.title}`, statsData);
+            throw new Error(`API Fehler: "${statsData.title}" (Status ${statsData.status}). Token prüfen oder später versuchen.`);
+        }
 
-        // Verbesserte Prüfung und Logging
+        if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`); // Direkter AlecaFrame Fehler
+
+        // Verbesserte Prüfung und Logging für generalDataPoints
         if (!statsData.generalDataPoints) {
             console.error("Fehlende 'generalDataPoints' in AlecaFrame Stats Antwort. Empfangene Keys:", Object.keys(statsData));
-            throw new Error("Stats: 'generalDataPoints' fehlt. Überprüfe die Konsolenausgabe für die empfangene Struktur.");
+            throw new Error("Stats: 'generalDataPoints' fehlt. Unerwartete API-Antwortstruktur.");
         }
 
         const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
