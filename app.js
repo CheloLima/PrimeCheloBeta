@@ -39,8 +39,7 @@ const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
 
-// API Token ändern Modal (Button jetzt im Settings-Modal)
-const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button');
+const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button'); // Button IM Settings Modal
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
@@ -117,15 +116,37 @@ function loadAccentColor() {
     applyAccentColor(originalAccentColor);
 }
 
-const RELIC_TIERS_FOR_NORMALIZATION = ["lith", "meso", "neo", "axi", "requiem"];
-function normalizeRelicNameForMatching(name) {
-    if (typeof name !== 'string') return '';
-    let lcName = name.toLowerCase();
-    lcName = lcName.replace(/\s*\([\w\s-]+\)\s*$/, '').replace(/\s+relic$/, '').trim();
-    lcName = lcName.replace(/prime vault|vaulted|[\[\]]/gi, '').trim();
-    lcName = lcName.replace(/\s+/g, ' ').trim();
-    return lcName;
+// --- Finale Relikt-Namen Normalisierungsfunktionen ---
+const RELIC_TIERS_FOR_KEY_EXTRACTION = ["lith", "meso", "neo", "axi", "requiem"];
+
+function normalizeWfcdItemNameForMapKey(wfcdItemName) {
+    if (typeof wfcdItemName !== 'string') return null;
+    let name = wfcdItemName.toLowerCase();
+    // Entferne (Intact), (Radiant) etc. und " Relic" am Ende
+    name = name.replace(/\s*\([\w\s-]+\)\s*$/, '').replace(/\s+relic$/, '').trim();
+
+    for (const tier of RELIC_TIERS_FOR_KEY_EXTRACTION) {
+        if (name.startsWith(tier + " ")) {
+            const shortName = name.substring(tier.length + 1).trim().split(' ')[0]; // Nimm den ersten Teil nach dem Tier
+            if (shortName && shortName.match(/^[a-z0-9]+$/i)) { // Einfache Prüfung für typische ShortNames (Buchstabe + Zahl)
+                return `${tier} ${shortName}`;
+            }
+        }
+    }
+    // Fallback, wenn die obige Logik fehlschlägt (z.B. "Requiem I Relic" -> "requiem i")
+    const parts = name.split(' ');
+    if (RELIC_TIERS_FOR_KEY_EXTRACTION.includes(parts[0]) && parts.length > 1 && parts[1]) {
+        return `${parts[0]} ${parts[1]}`;
+    }
+    console.warn(`[normalizeWfcdNameForMapKey] Konnte keinen Standardschlüssel für '${wfcdItemName}' generieren, normalisiere allgemeiner: '${name}'`);
+    return name; // Allgemeinere Normalisierung als letzter Fallback
 }
+
+function normalizeAlecaFrameRelicForKey(alecaTierName, alecaShortName) {
+    if (typeof alecaTierName !== 'string' || typeof alecaShortName !== 'string') return null;
+    return `${alecaTierName.toLowerCase()} ${alecaShortName.toLowerCase().trim()}`;
+}
+
 
 async function init() {
     loadAccentColor();
@@ -148,9 +169,7 @@ async function init() {
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
 
-    // Korrekter Event-Listener für "API Token ändern" Button im Settings Modal
     if (openChangeTokenModalButton) openChangeTokenModalButton.addEventListener('click', openChangeTokenModal);
-    // Event-Listener für das Formular im "API Token ändern" Modal
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
 
@@ -247,7 +266,7 @@ async function handleSaveAndLoadAlecaFrameToken(event, tokenValueFromModal = nul
     }
 }
 
-function openChangeTokenModal() {
+function openChangeTokenModal() { /* ... (Code bleibt gleich) ... */
     if (changeTokenModal) {
         newApiTokenInput.value = currentUser?.api_token || '';
         displayMessage(changeTokenMessage, '');
@@ -255,10 +274,10 @@ function openChangeTokenModal() {
         newApiTokenInput.focus();
     }
 }
-function closeChangeTokenModal() {
+function closeChangeTokenModal() { /* ... (Code bleibt gleich) ... */
     if (changeTokenModal) changeTokenModal.classList.add('hidden');
 }
-async function handleChangeTokenFormSubmit(event) {
+async function handleChangeTokenFormSubmit(event) { /* ... (Code bleibt gleich) ... */
     event.preventDefault();
     await handleSaveAndLoadAlecaFrameToken(null, newApiTokenInput.value.trim());
 }
@@ -368,7 +387,8 @@ function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich, L
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-async function loadWfcdRelicData() { /* ... (Code mit korrigierter Normalisierung für Map) ... */
+// --- WFCD Item Database ---
+async function loadWfcdRelicData() {
     if (wfcdRelicMap.size > 0) { return; }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
@@ -379,25 +399,12 @@ async function loadWfcdRelicData() { /* ... (Code mit korrigierter Normalisierun
         wfcdRelicMap.clear();
         itemsArray.forEach(item => {
             if (item && typeof item.name === 'string') {
-                const nameParts = item.name.toLowerCase().split(' ');
-                let tier = null;
-                let shortName = null; // Der Teil nach dem Tier, z.B. "a1", "k2"
-                if (RELIC_TIERS_FOR_NORMALIZATION.includes(nameParts[0])) {
-                    tier = nameParts[0];
-                    if (nameParts.length > 1) {
-                        shortName = nameParts[1];
-                    }
-                }
-                if (tier && shortName) {
-                    const normalizedKey = `${tier} ${shortName}`;
+                const normalizedKey = normalizeWfcdItemNameForMapKey(item.name);
+                if (normalizedKey) {
                     wfcdRelicMap.set(normalizedKey, item);
+                    // console.log(`[WFCD Map Load] Key: '${normalizedKey}', WFCD Name: '${item.name}'`);
                 } else {
-                    const genericNormalizedKey = normalizeRelicNameForMatching(item.name); // Verwendet die allgemeine Normalisierung
-                    if (genericNormalizedKey && !wfcdRelicMap.has(genericNormalizedKey)) {
-                         wfcdRelicMap.set(genericNormalizedKey, item);
-                    } else if (!genericNormalizedKey) {
-                        // console.warn(`Konnte keinen normalisierten Schlüssel für WFCD Item generieren: ${item.name}`);
-                    }
+                    // console.warn(`[WFCD Map Load] Konnte keinen Schlüssel für WFCD Item generieren: ${item.name}`);
                 }
             }
         });
@@ -413,7 +420,7 @@ async function loadWfcdRelicData() { /* ... (Code mit korrigierter Normalisierun
     } finally { hideApiLoader(); }
 }
 
-function parseAndDisplayRelicInventory(base64ApiResponse) { /* ... (Code mit korrigiertem Abgleich) ... */
+function parseAndDisplayRelicInventory(base64ApiResponse) {
     relicInventoryGrid.innerHTML = '';
     try {
         if (!base64ApiResponse) throw new Error("Keine Base64 Relikt-Daten von API.");
@@ -450,17 +457,20 @@ function parseAndDisplayRelicInventory(base64ApiResponse) { /* ... (Code mit kor
             const alecaRelicShortName = nameChars.join('').trim();
             const count = dataView.getUint32(offset, true); offset += 4;
             const alecaTierName = relicTierApiMap[typeByte] || "UnknownTier";
-            const normalizedAlecaKey = `${alecaTierName.toLowerCase()} ${alecaRelicShortName.toLowerCase()}`;
-            console.log(`[RelicParse] Suche Aleca: Tier='${alecaTierName}', Short='${alecaRelicShortName}', NormKey='${normalizedAlecaKey}', Count=${count}`);
-            const wfcdDetail = wfcdRelicMap.get(normalizedAlecaKey);
+
+            const searchKey = normalizeAlecaFrameRelicForKey(alecaTierName, alecaRelicShortName);
+
+            console.log(`[RelicParse] Suche Aleca: Tier='${alecaTierName}', Short='${alecaRelicShortName}', SearchKey='${searchKey}', Count=${count}`);
+
+            const wfcdDetail = wfcdRelicMap.get(searchKey);
             if (wfcdDetail) {
-                console.log(`[RelicParse] Match für '${normalizedAlecaKey}': ${wfcdDetail.name} (Tier aus WFCD: ${wfcdDetail.tier})`);
+                console.log(`[RelicParse] Match für '${searchKey}': ${wfcdDetail.name} (WFCD Tier: ${wfcdDetail.tier})`);
                 userRelicInventory.push({ ...wfcdDetail, count: count });
             } else {
-                console.warn(`[RelicParse] Kein WFCD Detail für Schlüssel "${normalizedAlecaKey}" (Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
+                console.warn(`[RelicParse] Kein WFCD Detail für Schlüssel "${searchKey}" (Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
                 userRelicInventory.push({
                     name: `${alecaTierName} ${alecaRelicShortName}`,
-                    uniqueName: `unknown_${normalizedAlecaKey.replace(/\s+/g, '_')}`,
+                    uniqueName: `unknown_${searchKey.replace(/\s+/g, '_')}`,
                     tier: alecaTierName, imageName: '', rewards: [], vaulted: false, count: count,
                 });
             }
@@ -507,26 +517,29 @@ function displayRelics(relicsToDisplay) {
 function showRelicTooltip(event, relicData) {
     if (!relicData) return;
     const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
-    let tooltipContent = `<h5 class="font-bold text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h5>`;
+    let tooltipContent = `<h3 class="font-orbitron text-base text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h3>`;
+    if (relicData.description) {
+        tooltipContent += `<p class="text-xs text-text-secondary mb-2">${relicData.description}</p>`;
+    }
 
     if (relicData.rewards && Array.isArray(relicData.rewards) && relicData.rewards.length > 0) {
-        tooltipContent += '<p class="text-xs text-text-secondary mb-1">Top 3 Belohnungen (aus diesem Relikt):</p><ul class="list-none text-xs space-y-0.5">';
+        tooltipContent += `<hr class="border-gray-700 my-2"><h4 class="text-sm font-bold text-text-primary mb-1">Mögliche Belohnungen (im Relikt):</h4><ul class="list-none text-xs space-y-0.5">`;
         const rarityOrder = { "Rare": 1, "Uncommon": 2, "Common": 3 };
         const validRewards = relicData.rewards.filter(r => r && typeof r.itemName === 'string' && typeof r.rarity === 'string' && typeof r.chance === 'number');
         const sortedRewards = [...validRewards].sort((a,b) => {
             const orderA = rarityOrder[a.rarity] || 4;
             const orderB = rarityOrder[b.rarity] || 4;
             if (orderA !== orderB) return orderA - orderB;
-            if (b.chance !== a.chance) return b.chance - a.chance;
+            if (b.chance !== a.chance) return b.chance - a.chance; // Höhere Chance zuerst bei gleicher Seltenheit
             return a.itemName.localeCompare(b.itemName);
         });
-        sortedRewards.slice(0, 3).forEach(item => {
+        sortedRewards.slice(0, 5).forEach(item => { // Zeige Top 3-5
             const rarityColor = item.rarity === "Rare" ? "text-yellow-400" : item.rarity === "Uncommon" ? "text-gray-300" : "text-text-primary";
-            tooltipContent += `<li><span class="${rarityColor}">${item.itemName}</span> (${item.rarity}) - ${item.chance}%</li>`;
+            tooltipContent += `<li><span class="${rarityColor}">${item.itemName}</span> (${item.rarity}) - ${item.chance.toFixed(2)}%</li>`;
         });
-        if (sortedRewards.length > 3) tooltipContent += `<li>... und ${sortedRewards.length - 3} weitere</li>`;
+        if (sortedRewards.length > 5) tooltipContent += `<li>... und ${sortedRewards.length - 5} weitere</li>`;
         tooltipContent += '</ul>';
-    } else { tooltipContent += '<p class="text-xs text-text-secondary">Keine Belohnungsdetails verfügbar.</p>'; }
+    } else { tooltipContent += '<p class="text-xs text-text-secondary mt-1">Keine Belohnungsdetails verfügbar für dieses Relikt.</p>'; }
     relicTooltip.innerHTML = tooltipContent;
     relicTooltip.classList.remove('hidden');
     moveRelicTooltip(event);
@@ -537,17 +550,17 @@ function moveRelicTooltip(event) {
     const { clientX:mX, clientY:mY } = event;
     const tooltipWidth = relicTooltip.offsetWidth;
     const tooltipHeight = relicTooltip.offsetHeight;
-    let x = mX + 15; // Leicht rechts von der Maus
-    let y = mY + 15; // Leicht unter der Maus
+    let x = mX + 20; // Standardmäßig rechts (+Offset)
+    let y = mY + 20; // Standardmäßig unter (+Offset)
 
-    if (x + tooltipWidth > window.innerWidth - 10) {
-        x = mX - tooltipWidth - 15;
+    if (x + tooltipWidth > window.innerWidth - 15) {
+        x = mX - tooltipWidth - 20;
     }
-    if (y + tooltipHeight > window.innerHeight - 10) {
-        y = mY - tooltipHeight - 15;
+    if (y + tooltipHeight > window.innerHeight - 15) {
+        y = mY - tooltipHeight - 20;
     }
-    if (x < 10) x = 10;
-    if (y < 10) y = 10;
+    if (x < 15) x = 15;
+    if (y < 15) y = 15;
 
     relicTooltip.style.left = `${x}px`;
     relicTooltip.style.top = `${y}px`;
@@ -601,7 +614,7 @@ function toggleLightMode() {
             if(lightModeWarningModal) lightModeWarningModal.classList.remove('hidden');
             if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'none';
 
-            setTimeout(() => {
+            setTimeout(() => { // Dauer des Alarms + Anzeige der Nachricht
                 clearInterval(alarmInterval);
                 alarmOverlay.style.display = 'none';
                 if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
@@ -624,7 +637,7 @@ function toggleLightMode() {
                 if (lightModeToggle) lightModeToggle.checked = false;
                 if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
                 lightModeActive = false;
-            }, 7300);
+            }, 8300); // Gesamtdauer jetzt 0.7s (hell) + 8.3s (Alarm) = 9 Sekunden
         }, 700);
     } else if (!lightModeToggle.checked && lightModeActive) {
         clearInterval(alarmInterval);
