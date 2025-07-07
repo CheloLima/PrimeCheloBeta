@@ -23,6 +23,7 @@ const registerMessage = document.getElementById('register-message');
 const showRegisterButton = document.getElementById('show-register-button');
 const showLoginButton = document.getElementById('show-login-button');
 const usernameDisplay = document.getElementById('username-display');
+const percentageCompletionDisplay = document.getElementById('percentage-completion-display'); // NEU
 const logoutButton = document.getElementById('logout-button');
 const settingsButton = document.getElementById('settings-button');
 const alecaFrameTokenSection = document.getElementById('alecaframe-token-section');
@@ -38,17 +39,12 @@ const settingsModal = document.getElementById('settings-modal');
 const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
-
-// API Token ändern Modal und dessen Trigger-Button (jetzt wieder im Header)
-const changeApiTokenButton = document.getElementById('change-api-token-button'); // Button im Header
+const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button');
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
 const cancelChangeTokenButton = document.getElementById('cancel-change-token-button');
 const changeTokenMessage = document.getElementById('change-token-message');
-// const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button'); // Button im Settings Modal (wird nicht mehr verwendet)
-
-
 const lightModeToggle = document.getElementById('light-mode-toggle');
 const lightModeWarningModal = document.getElementById('lightmode-warning-modal');
 const alarmOverlay = document.getElementById('alarm-overlay');
@@ -136,7 +132,6 @@ function normalizeWfcdItemNameForMapKey(wfcdItemName) {
     if (RELIC_TIERS_FOR_KEY_EXTRACTION.includes(parts[0]) && parts.length > 1 && parts[1]) {
         return `${parts[0]} ${parts[1]}`;
     }
-    // console.warn(`[normalizeWfcdNameForMapKey] Konnte keinen Standardschlüssel für '${wfcdItemName}' generieren, normalisiere allgemeiner: '${name}'`);
     return name;
 }
 function normalizeAlecaFrameRelicForKey(alecaTierName, alecaShortName) {
@@ -164,13 +159,9 @@ async function init() {
     closeSettingsModalButton.addEventListener('click', closeSettingsModal);
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
-
-    // Event-Listener für "API Token ändern" Button im HEADER
-    if (changeApiTokenButton) changeApiTokenButton.addEventListener('click', openChangeTokenModal);
-    // Event-Listener für das Formular im "API Token ändern" Modal
+    if (openChangeTokenModalButton) openChangeTokenModalButton.addEventListener('click', openChangeTokenModal);
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
-
     if (lightModeToggle) lightModeToggle.addEventListener('change', toggleLightMode);
 
     await loadWfcdRelicData();
@@ -233,6 +224,7 @@ async function handleLogout() { /* ... (Code bleibt gleich) ... */
         generalStatsDisplay.innerHTML = ''; relicInventoryGrid.innerHTML = '';
         alecaFrameTokenInput.value = ''; displayMessage(alecaFrameTokenMessage, '');
         alecaFrameTokenSection.classList.remove('hidden');
+        if(percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'N/A'; // Reset Percentage
         Object.values(amChartsInstances).forEach(chart => chart?.dispose());
         amChartsInstances = { credits: null, platinum: null, endo: null };
         hideApiLoader();
@@ -297,6 +289,7 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
         if (combinedData.statsDataError) {
             console.error("Fehler bei Stats-Daten vom PHP-Proxy:", combinedData.statsDataError);
             generalStatsDisplay.innerHTML = `<p class="text-red-400">${combinedData.statsDataError}</p>`;
+            if (percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'Fehler';
             Object.keys(amChartsInstances).forEach(key => {
                 const container = document.getElementById(`${key}-chart-container`);
                 if(container) container.innerHTML = `<p class="text-red-400 text-center pt-8 text-sm">Fehler beim Laden der ${key}-Daten.</p>`;
@@ -305,12 +298,13 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
             const statsData = combinedData.statsData;
             const latestStats = statsData.generalDataPoints.length > 0 ? statsData.generalDataPoints[statsData.generalDataPoints.length - 1] : {};
             if(statsData.usernameWhenPublic) latestStats.usernameWhenPublic = statsData.usernameWhenPublic;
-            displayGeneralStats(latestStats);
+            displayGeneralStats(latestStats); // Ruft jetzt die aktualisierte Funktion auf
             createCurrencyCharts(statsData.generalDataPoints);
         } else {
             const errorDetail = combinedData.statsData ? `Empfangene Keys: ${Object.keys(combinedData.statsData).join(', ')}` : "Keine StatsData empfangen.";
             console.error("Unerwartete oder fehlende Stats-Daten vom PHP-Proxy:", errorDetail, combinedData.statsData);
             generalStatsDisplay.innerHTML = `<p class="text-red-400">Keine gültigen Statistikdaten empfangen. ${errorDetail}</p>`;
+            if (percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'Fehler';
             Object.keys(amChartsInstances).forEach(key => {
                  const container = document.getElementById(`${key}-chart-container`);
                 if(container) container.innerHTML = `<p class="text-red-400 text-center pt-8 text-sm">Keine gültigen ${key}-Daten.</p>`;
@@ -331,12 +325,13 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
         displayMessage(alecaFrameTokenMessage, `Proxy Fehler: ${error.message}`, true);
         statsSection.classList.add('hidden');
         relicInventorySection.classList.add('hidden');
+        if (percentageCompletionDisplay) percentageCompletionDisplay.textContent = 'Fehler';
     } finally {
         hideApiLoader();
     }
 }
 
-function displayGeneralStats(latestDataPoint) { /* ... (Code bleibt gleich) ... */
+function displayGeneralStats(latestDataPoint) {
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -349,8 +344,18 @@ function displayGeneralStats(latestDataPoint) { /* ... (Code bleibt gleich) ... 
     if (latestDataPoint.relicOpened !== undefined) html += `<div><span class="text-text-secondary">Relikte geöffnet:</span> <span class="text-primary-accent">${format(latestDataPoint.relicOpened)}</span></div>`;
     html += '</div>';
     generalStatsDisplay.innerHTML = html;
+
+    // PercentageCompletion anzeigen
+    if (percentageCompletionDisplay) {
+        const completion = latestDataPoint.percentageCompletion;
+        if (typeof completion === 'number') {
+            percentageCompletionDisplay.textContent = completion.toFixed(2);
+        } else {
+            percentageCompletionDisplay.textContent = 'N/A';
+        }
+    }
 }
-function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich, Logo-Fix ist drin) ... */
+function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich) ... */
     const createChart = (containerId, dataArray, valueFieldName, colorHex, currencyName) => {
         const chartContainer = document.getElementById(containerId);
         if (!chartContainer) { console.error(`Chart Container ${containerId} fehlt.`); return; }
@@ -385,7 +390,7 @@ function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich, L
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-async function loadWfcdRelicData() {
+async function loadWfcdRelicData() { /* ... (Code bleibt gleich) ... */
     if (wfcdRelicMap.size > 0) { return; }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
@@ -414,7 +419,7 @@ async function loadWfcdRelicData() {
     } finally { hideApiLoader(); }
 }
 
-function parseAndDisplayRelicInventory(base64ApiResponse) {
+function parseAndDisplayRelicInventory(base64ApiResponse) { /* ... (Code bleibt gleich) ... */
     relicInventoryGrid.innerHTML = '';
     try {
         if (!base64ApiResponse) throw new Error("Keine Base64 Relikt-Daten von API.");
@@ -451,11 +456,8 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
             const alecaRelicShortName = nameChars.join('').trim();
             const count = dataView.getUint32(offset, true); offset += 4;
             const alecaTierName = relicTierApiMap[typeByte] || "UnknownTier";
-
             const searchKey = normalizeAlecaFrameRelicForKey(alecaTierName, alecaRelicShortName);
-
             console.log(`[RelicParse] Suche Aleca: Tier='${alecaTierName}', Short='${alecaRelicShortName}', SearchKey='${searchKey}', Count=${count}`);
-
             const wfcdDetail = wfcdRelicMap.get(searchKey);
             if (wfcdDetail) {
                 console.log(`[RelicParse] Match für '${searchKey}': ${wfcdDetail.name} (WFCD Tier: ${wfcdDetail.tier})`);
@@ -477,7 +479,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
     }
 }
 
-function displayRelics(relicsToDisplay) {
+function displayRelics(relicsToDisplay) { /* ... (Code mit DocumentFragment und Tier-Fallback) ... */
     if (!relicsToDisplay || relicsToDisplay.length === 0) {
         relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Keine Relikte zum Anzeigen.</p>'; return;
     }
@@ -508,11 +510,11 @@ function displayRelics(relicsToDisplay) {
     relicInventoryGrid.appendChild(fragment);
 }
 
-function showRelicTooltip(event, relicData) {
+function showRelicTooltip(event, relicData) { /* ... (Code mit korrigierter Sortierung und Beschreibung) ... */
     if (!relicData) return;
     const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
     let tooltipContent = `<h3 class="font-orbitron text-base text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h3>`;
-    if (relicData.description) { // Füge Beschreibung hinzu, falls vorhanden
+    if (relicData.description) {
         tooltipContent += `<p class="text-xs text-text-secondary mb-2">${relicData.description}</p>`;
     }
 
@@ -527,7 +529,7 @@ function showRelicTooltip(event, relicData) {
             if (b.chance !== a.chance) return b.chance - a.chance;
             return a.itemName.localeCompare(b.itemName);
         });
-        sortedRewards.slice(0, 5).forEach(item => { // Zeige Top 3-5
+        sortedRewards.slice(0, 5).forEach(item => {
             const rarityColor = item.rarity === "Rare" ? "text-yellow-400" : item.rarity === "Uncommon" ? "text-gray-300" : "text-text-primary";
             tooltipContent += `<li><span class="${rarityColor}">${item.itemName}</span> (${item.rarity}) - ${item.chance.toFixed(2)}%</li>`;
         });
@@ -539,22 +541,31 @@ function showRelicTooltip(event, relicData) {
     moveRelicTooltip(event);
 }
 function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
-function moveRelicTooltip(event) {
+
+function moveRelicTooltip(event) { // Überarbeitete Logik für Tooltip-Position
     if (relicTooltip.classList.contains('hidden')) return;
-    const { clientX:mX, clientY:mY } = event;
+    const { clientX: mX, clientY: mY } = event;
     const tooltipWidth = relicTooltip.offsetWidth;
     const tooltipHeight = relicTooltip.offsetHeight;
-    let x = mX + 15;
-    let y = mY + 15;
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
-    if (x + tooltipWidth > window.innerWidth - 10) {
-        x = mX - tooltipWidth - 15;
+    let x = mX + scrollX + 15; // Positioniere rechts von der Maus
+    let y = mY + scrollY + 15; // Positioniere unter der Maus
+
+    // Kollisionserkennung mit Viewport-Rändern
+    if (mX + 15 + tooltipWidth > viewportWidth - 10) { // Wenn rechts über den Rand des Viewports
+        x = mX + scrollX - tooltipWidth - 15; // Positioniere links von der Maus
     }
-    if (y + tooltipHeight > window.innerHeight - 10) {
-        y = mY - tooltipHeight - 15;
+    if (mY + 15 + tooltipHeight > viewportHeight - 10) { // Wenn unten über den Rand des Viewports
+        y = mY + scrollY - tooltipHeight - 15; // Positioniere über der Maus
     }
-    if (x < 10) x = 10;
-    if (y < 10) y = 10;
+
+    // Sicherstellen, dass es nicht außerhalb des Dokuments links/oben ist (falls gescrollt)
+    if (x < scrollX + 10) x = scrollX + 10;
+    if (y < scrollY + 10) y = scrollY + 10;
 
     relicTooltip.style.left = `${x}px`;
     relicTooltip.style.top = `${y}px`;
@@ -569,7 +580,7 @@ function closeSettingsModal() { if(settingsModal) settingsModal.classList.add('h
 let lightModeActive = false;
 let alarmInterval = null;
 
-function toggleLightMode() {
+function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
     if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) { return; }
     if (lightModeToggle.checked && !lightModeActive) {
         lightModeActive = true;
@@ -631,7 +642,7 @@ function toggleLightMode() {
                 if (lightModeToggle) lightModeToggle.checked = false;
                 if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
                 lightModeActive = false;
-            }, 8300);
+            }, 9300); // Gesamtdauer jetzt 0.7s (hell) + 9.3s (Alarm) = 10 Sekunden
         }, 700);
     } else if (!lightModeToggle.checked && lightModeActive) {
         clearInterval(alarmInterval);
