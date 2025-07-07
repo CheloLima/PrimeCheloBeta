@@ -91,7 +91,8 @@ function animate() {
 
     // Eine subtile, langsame Grundrotation hinzufügen, damit es nicht statisch wirkt, wenn die Maus stillsteht
     if (stars) {
-        stars.rotation.y += 0.00005;
+        stars.rotation.y += 0.00007; // Y-Rotation
+        stars.rotation.z += 0.00003; // Z-Rotation
     }
 
 

@@ -39,8 +39,8 @@ const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
 
-// API Token ändern Modal (im Einstellungs-Modal getriggert)
-const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button'); // NEU im Settings-Modal
+// API Token ändern Modal (Button jetzt im Settings-Modal)
+const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button');
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
@@ -85,7 +85,7 @@ function applyAccentColor(primaryColor, isLightModeTransition = false) {
     const secondaryColor = lightenHexColor(primaryColor, 40);
     if (!isLightModeTransition) {
         localStorage.setItem('accentColor', primaryColor);
-        originalAccentColor = primaryColor; // Aktualisiere auch hier für den Reset
+        originalAccentColor = primaryColor;
     }
     document.documentElement.style.setProperty('--primary-accent', primaryColor);
     document.documentElement.style.setProperty('--secondary-accent', secondaryColor);
@@ -98,7 +98,7 @@ function applyAccentColor(primaryColor, isLightModeTransition = false) {
     });
     if (amChartsInstances.credits && amChartsInstances.credits.series && amChartsInstances.credits.series.length > 0 ) {
         const creditsSeries = amChartsInstances.credits.series.getIndex(0);
-        if (creditsSeries) { // Zusätzliche Prüfung für die Serie selbst
+        if (creditsSeries) {
             const amPrimaryColor = am5.color(primaryColor);
             creditsSeries.set("stroke", amPrimaryColor);
             creditsSeries.set("fill", amPrimaryColor);
@@ -121,17 +121,10 @@ const RELIC_TIERS_FOR_NORMALIZATION = ["lith", "meso", "neo", "axi", "requiem"];
 function normalizeRelicNameForMatching(name) {
     if (typeof name !== 'string') return '';
     let lcName = name.toLowerCase();
-    // Zuerst spezifische Tier-Namen entfernen, falls vorhanden, um Duplikate zu vermeiden
-    for (const tier of RELIC_TIERS_FOR_NORMALIZATION) {
-        if (lcName.startsWith(tier + " ")) {
-            lcName = lcName.substring(tier.length + 1);
-            break;
-        }
-    }
     lcName = lcName.replace(/\s*\([\w\s-]+\)\s*$/, '').replace(/\s+relic$/, '').trim();
     lcName = lcName.replace(/prime vault|vaulted|[\[\]]/gi, '').trim();
     lcName = lcName.replace(/\s+/g, ' ').trim();
-    return lcName; // Gibt jetzt nur den "ShortName" Teil zurück, z.B. "a1" oder "k2"
+    return lcName;
 }
 
 async function init() {
@@ -155,8 +148,9 @@ async function init() {
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
 
-    // Event Listener für "API Token ändern" im Settings Modal
+    // Korrekter Event-Listener für "API Token ändern" Button im Settings Modal
     if (openChangeTokenModalButton) openChangeTokenModalButton.addEventListener('click', openChangeTokenModal);
+    // Event-Listener für das Formular im "API Token ändern" Modal
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
 
@@ -253,7 +247,7 @@ async function handleSaveAndLoadAlecaFrameToken(event, tokenValueFromModal = nul
     }
 }
 
-function openChangeTokenModal() { /* ... (Code bleibt gleich) ... */
+function openChangeTokenModal() {
     if (changeTokenModal) {
         newApiTokenInput.value = currentUser?.api_token || '';
         displayMessage(changeTokenMessage, '');
@@ -261,10 +255,10 @@ function openChangeTokenModal() { /* ... (Code bleibt gleich) ... */
         newApiTokenInput.focus();
     }
 }
-function closeChangeTokenModal() { /* ... (Code bleibt gleich) ... */
+function closeChangeTokenModal() {
     if (changeTokenModal) changeTokenModal.classList.add('hidden');
 }
-async function handleChangeTokenFormSubmit(event) { /* ... (Code bleibt gleich) ... */
+async function handleChangeTokenFormSubmit(event) {
     event.preventDefault();
     await handleSaveAndLoadAlecaFrameToken(null, newApiTokenInput.value.trim());
 }
@@ -374,7 +368,7 @@ function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich, L
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-async function loadWfcdRelicData() {
+async function loadWfcdRelicData() { /* ... (Code mit korrigierter Normalisierung für Map) ... */
     if (wfcdRelicMap.size > 0) { return; }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
@@ -385,32 +379,26 @@ async function loadWfcdRelicData() {
         wfcdRelicMap.clear();
         itemsArray.forEach(item => {
             if (item && typeof item.name === 'string') {
-                // Extrahiere Tier und ShortName aus WFCD item.name
-                // Beispiel: "Lith A1 Relic" -> Tier "Lith", ShortName "A1"
-                // Beispiel: "Axi V8 Relic (Intact)" -> Tier "Axi", ShortName "V8"
                 const nameParts = item.name.toLowerCase().split(' ');
                 let tier = null;
-                let shortName = null;
+                let shortName = null; // Der Teil nach dem Tier, z.B. "a1", "k2"
                 if (RELIC_TIERS_FOR_NORMALIZATION.includes(nameParts[0])) {
                     tier = nameParts[0];
                     if (nameParts.length > 1) {
-                        shortName = nameParts[1]; // Nimmt den Teil direkt nach dem Tier
+                        shortName = nameParts[1];
                     }
                 }
                 if (tier && shortName) {
-                    const normalizedKey = `${tier} ${shortName}`; // z.B. "lith a1"
+                    const normalizedKey = `${tier} ${shortName}`;
                     wfcdRelicMap.set(normalizedKey, item);
                 } else {
-                     // Fallback mit der allgemeineren Normalisierung, falls die obige Logik nicht greift
-                    const genericNormalizedKey = normalizeRelicNameForMatching(item.name);
+                    const genericNormalizedKey = normalizeRelicNameForMatching(item.name); // Verwendet die allgemeine Normalisierung
                     if (genericNormalizedKey && !wfcdRelicMap.has(genericNormalizedKey)) {
                          wfcdRelicMap.set(genericNormalizedKey, item);
                     } else if (!genericNormalizedKey) {
-                        console.warn(`Konnte keinen normalisierten Schlüssel für WFCD Item generieren: ${item.name}`);
+                        // console.warn(`Konnte keinen normalisierten Schlüssel für WFCD Item generieren: ${item.name}`);
                     }
                 }
-            } else {
-                 console.warn("Ungültiges Item-Format in WFCD Relics.json:", item);
             }
         });
         console.log('WFCD Relic Map initialisiert:', wfcdRelicMap.size, "Einträge");
@@ -425,7 +413,7 @@ async function loadWfcdRelicData() {
     } finally { hideApiLoader(); }
 }
 
-function parseAndDisplayRelicInventory(base64ApiResponse) {
+function parseAndDisplayRelicInventory(base64ApiResponse) { /* ... (Code mit korrigiertem Abgleich) ... */
     relicInventoryGrid.innerHTML = '';
     try {
         if (!base64ApiResponse) throw new Error("Keine Base64 Relikt-Daten von API.");
@@ -467,9 +455,9 @@ function parseAndDisplayRelicInventory(base64ApiResponse) {
             const wfcdDetail = wfcdRelicMap.get(normalizedAlecaKey);
             if (wfcdDetail) {
                 console.log(`[RelicParse] Match für '${normalizedAlecaKey}': ${wfcdDetail.name} (Tier aus WFCD: ${wfcdDetail.tier})`);
-                userRelicInventory.push({ ...wfcdDetail, count: count }); // wfcdDetail.tier sollte hier korrekt sein
+                userRelicInventory.push({ ...wfcdDetail, count: count });
             } else {
-                console.warn(`[RelicParse] Kein WFCD Detail für Schlüssel "${normalizedAlecaKey}" (Aleca: ${alecaTierName} ${alecaRelicShortName})`);
+                console.warn(`[RelicParse] Kein WFCD Detail für Schlüssel "${normalizedAlecaKey}" (Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
                 userRelicInventory.push({
                     name: `${alecaTierName} ${alecaRelicShortName}`,
                     uniqueName: `unknown_${normalizedAlecaKey.replace(/\s+/g, '_')}`,
@@ -495,7 +483,7 @@ function displayRelics(relicsToDisplay) {
         const imageName = relic.imageName || `${(relic.tier || '').toLowerCase()}${(relic.name || '').split(' ').pop().toLowerCase().replace(/[^a-z0-9]/gi, '')}relicint.png`;
         const isVaulted = relic.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span> " : "";
         const displayName = relic.name;
-        const displayTier = relic.tier || 'Unbekannt'; // Fallback, falls Tier immer noch fehlt
+        const displayTier = relic.tier || 'Unbekannt';
 
         const relicElement = document.createElement('div');
         relicElement.className = 'panel !p-2 flex flex-col items-center text-center cursor-pointer interactive-element transition-all hover:scale-105 focus-within:ring-2 focus-within:ring-primary-accent';
@@ -549,18 +537,17 @@ function moveRelicTooltip(event) {
     const { clientX:mX, clientY:mY } = event;
     const tooltipWidth = relicTooltip.offsetWidth;
     const tooltipHeight = relicTooltip.offsetHeight;
-    let x = mX + 20; // Standardmäßig rechts von der Maus
-    let y = mY + 20; // Standardmäßig unter der Maus
+    let x = mX + 15; // Leicht rechts von der Maus
+    let y = mY + 15; // Leicht unter der Maus
 
-    // Kollisionserkennung mit Fensterrändern
-    if (x + tooltipWidth > window.innerWidth - 15) { // Wenn rechts über Rand
-        x = mX - tooltipWidth - 20; // Links von der Maus
+    if (x + tooltipWidth > window.innerWidth - 10) {
+        x = mX - tooltipWidth - 15;
     }
-    if (y + tooltipHeight > window.innerHeight - 15) { // Wenn unten über Rand
-        y = mY - tooltipHeight - 20; // Über der Maus
+    if (y + tooltipHeight > window.innerHeight - 10) {
+        y = mY - tooltipHeight - 15;
     }
-    if (x < 15) x = 15; // Verhindere Überlappung links
-    if (y < 15) y = 15; // Verhindere Überlappung oben
+    if (x < 10) x = 10;
+    if (y < 10) y = 10;
 
     relicTooltip.style.left = `${x}px`;
     relicTooltip.style.top = `${y}px`;
@@ -585,7 +572,7 @@ function toggleLightMode() {
         originalCssVars['--text-secondary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
         originalCssVars['bodyBg'] = document.body.style.backgroundColor;
         originalCssVars['bodyColor'] = document.body.style.color;
-        // originalAccentColor ist bereits global gespeichert und aktuell
+        // originalAccentColor ist bereits global gespeichert
 
         document.body.classList.add("light-mode-active-override");
         document.body.style.backgroundColor = '#f0f0f0';
@@ -594,7 +581,7 @@ function toggleLightMode() {
         document.documentElement.style.setProperty('--bg-surface', '#ffffff');
         document.documentElement.style.setProperty('--text-primary', '#1e293b');
         document.documentElement.style.setProperty('--text-secondary', '#64748b');
-        applyAccentColor('#6b7280', true); // Tailwind gray-500 als temporärer Akzent
+        applyAccentColor('#6b7280', true);
 
         document.querySelectorAll('.panel').forEach(p => {
             p.style.backgroundColor = 'rgba(250, 250, 250, 0.9)';
@@ -609,7 +596,7 @@ function toggleLightMode() {
             alarmInterval = setInterval(() => {
                 alarmOverlay.style.backgroundColor = isRedAlarm ? 'rgba(255, 0, 0, 0.35)' : 'transparent';
                 isRedAlarm = !isRedAlarm;
-            }, 180); // Etwas schnellerer Blink
+            }, 180);
 
             if(lightModeWarningModal) lightModeWarningModal.classList.remove('hidden');
             if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'none';
@@ -632,14 +619,14 @@ function toggleLightMode() {
                     p.style.borderColor = '';
                     p.style.boxShadow = '';
                 });
-                applyAccentColor(originalAccentColor); // Gespeicherte Akzentfarbe wiederherstellen
+                applyAccentColor(originalAccentColor);
 
                 if (lightModeToggle) lightModeToggle.checked = false;
                 if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
                 lightModeActive = false;
-            }, 7300); // 7.3 Sekunden Alarm (Gesamtdauer 0.7s hell + 7.3s = 8s)
+            }, 7300);
         }, 700);
-    } else if (!lightModeToggle.checked && lightModeActive) { // Manueller Reset
+    } else if (!lightModeToggle.checked && lightModeActive) {
         clearInterval(alarmInterval);
         alarmOverlay.style.display = 'none';
         if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
