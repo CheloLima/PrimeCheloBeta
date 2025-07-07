@@ -49,9 +49,9 @@ const newApiTokenInput = document.getElementById('new-api-token-input');
 const cancelChangeTokenButton = document.getElementById('cancel-change-token-button');
 const changeTokenMessage = document.getElementById('change-token-message');
 
-// Light Mode Easter Egg Elemente
 const lightModeToggle = document.getElementById('light-mode-toggle');
 const lightModeWarningModal = document.getElementById('lightmode-warning-modal');
+const alarmOverlay = document.getElementById('alarm-overlay'); // NEU für Light Mode Alarm
 
 
 // --- Hilfsfunktionen ---
@@ -80,16 +80,26 @@ function lightenHexColor(hex, percent) {
     const newB = Math.min(255, Math.floor(b * (1 + percent / 100)));
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
-function applyAccentColor(primaryColor) {
+
+let originalCssVars = {}; // Zum Speichern der originalen CSS-Variablen für Light Mode Reset
+
+function applyAccentColor(primaryColor, isLightModeTransition = false) {
     const secondaryColor = lightenHexColor(primaryColor, 40);
+
+    if (!isLightModeTransition) { // Nur speichern, wenn es keine temporäre Light-Mode Farbe ist
+        localStorage.setItem('accentColor', primaryColor);
+    }
+
     document.documentElement.style.setProperty('--primary-accent', primaryColor);
     document.documentElement.style.setProperty('--secondary-accent', secondaryColor);
     document.documentElement.style.setProperty('--primary-accent-rgb', hexToRgb(primaryColor));
+
     document.querySelectorAll('.panel').forEach(panel => {
+        // Wenn im Light Mode, könnten Panel-Farben anders sein, hier aber erstmal Standard-Logik
         panel.style.borderColor = `rgba(${hexToRgb(primaryColor)}, 0.3)`;
         panel.style.boxShadow = `0 0 15px 0px rgba(${hexToRgb(primaryColor)}, 0.2)`;
     });
-    localStorage.setItem('accentColor', primaryColor);
+
     if (amChartsInstances.credits) {
         const creditsSeries = amChartsInstances.credits.series.getIndex(0);
         if (creditsSeries) {
@@ -147,7 +157,6 @@ async function init() {
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
 
-    // Light Mode Toggle Event Listener
     if (lightModeToggle) lightModeToggle.addEventListener('change', toggleLightMode);
 
     await loadWfcdRelicData();
@@ -338,7 +347,7 @@ function createCurrencyCharts(generalDataPoints) {
         const chartData = dataArray.map(item => ({ date: new Date(item.ts).getTime(), value: parseInt(item[valueFieldName]) || 0 })).sort((a,b) => a.date - b.date);
         let root = am5.Root.new(chartContainer);
         amChartsInstances[currencyName.toLowerCase()] = root;
-        root.logo.set("disabled", true);
+        if (root.logo) root.logo.set("disabled", true);
         root.setThemes([am5themes_Animated.new(root), am5themes_Dark.new(root)]);
         root.interfaceColors.setAll({ "background": am5.color(0x00000000), "text": am5.color(0xe0e0e0), "grid": am5.color(0x333333), "secondaryButtonText": am5.color(0xe0e0e0) });
         let chart = root.container.children.push(am5xy.XYChart.new(root, { panX: true, panY: false, wheelX: "panX", wheelY: "zoomX", pinchZoomX: true, layout: root.verticalLayout, maxTooltipDistance: 0 }));
@@ -525,28 +534,79 @@ function openSettingsModal() {
 function closeSettingsModal() { if(settingsModal) settingsModal.classList.add('hidden'); }
 
 // --- Light Mode Easter Egg ---
-function toggleLightMode() {
-    if (!lightModeToggle || !lightModeWarningModal) return;
+const originalCssProps = {
+    '--bg-deep-space': '', '--bg-surface': '', '--text-primary': '',
+    '--text-secondary': '', 'bodyBg': '', 'bodyColor': ''
+};
+let lightModeActive = false;
+let alarmInterval = null;
 
-    if (lightModeToggle.checked) {
-        document.body.style.filter = 'invert(1) hue-rotate(180deg)';
+function toggleLightMode() {
+    if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) return;
+
+    if (lightModeToggle.checked && !lightModeActive) {
+        lightModeActive = true;
+        // Originalfarben speichern
+        originalCssProps['--bg-deep-space'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-deep-space');
+        originalCssProps['--bg-surface'] = getComputedStyle(document.documentElement).getPropertyValue('--bg-surface');
+        originalCssProps['--text-primary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-primary');
+        originalCssProps['--text-secondary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary');
+        originalCssProps['bodyBg'] = document.body.style.backgroundColor;
+        originalCssProps['bodyColor'] = document.body.style.color;
+        const storedAccent = localStorage.getItem('accentColor') || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim();
+        originalCssProps['accent'] = storedAccent;
+
+        // Helle Farben setzen
+        document.documentElement.style.setProperty('--bg-deep-space', '#e0e0e0');
+        document.documentElement.style.setProperty('--bg-surface', '#f5f5f5');
+        document.documentElement.style.setProperty('--text-primary', '#1a1a1a');
+        document.documentElement.style.setProperty('--text-secondary', '#444444');
+        document.body.style.backgroundColor = '#e0e0e0';
+        document.body.style.color = '#1a1a1a';
+        applyAccentColor('#757575', true); // Temporäre graue Akzentfarbe für Light Mode
+
+        // Panels anpassen
+        document.querySelectorAll('.panel').forEach(p => {
+            p.style.backgroundColor = 'rgba(255,255,255,0.85)';
+            p.style.borderColor = 'rgba(0,0,0,0.2)';
+        });
+
         lightModeWarningModal.classList.remove('hidden');
-        // Verhindere, dass das Einstellungsmodal geschlossen wird, während die Warnung aktiv ist
+        alarmOverlay.style.display = 'block';
+        let isRedAlarm = true;
+        if(alarmInterval) clearInterval(alarmInterval); // Sicherheitshalber alten Interval löschen
+        alarmInterval = setInterval(() => {
+            alarmOverlay.style.backgroundColor = isRedAlarm ? 'rgba(255, 0, 0, 0.2)' : 'transparent';
+            isRedAlarm = !isRedAlarm;
+        }, 200);
+
         closeSettingsModalButton.style.pointerEvents = 'none';
 
         setTimeout(() => {
-            document.body.style.filter = '';
+            clearInterval(alarmInterval);
+            alarmOverlay.style.display = 'none';
             lightModeWarningModal.classList.add('hidden');
-            lightModeToggle.checked = false; // Setze den Toggle zurück
+
+            // Ursprüngliche Farben wiederherstellen
+            document.documentElement.style.setProperty('--bg-deep-space', originalCssProps['--bg-deep-space']);
+            document.documentElement.style.setProperty('--bg-surface', originalCssProps['--bg-surface']);
+            document.documentElement.style.setProperty('--text-primary', originalCssProps['--text-primary']);
+            document.documentElement.style.setProperty('--text-secondary', originalCssProps['--text-secondary']);
+            document.body.style.backgroundColor = originalCssProps['bodyBg'];
+            document.body.style.color = originalCssProps['bodyColor'];
+            document.querySelectorAll('.panel').forEach(p => {
+                p.style.backgroundColor = ''; // Zurücksetzen auf CSS-gesteuert
+                 p.style.borderColor = '';
+            });
+            applyAccentColor(originalCssProps['accent']); // Ursprüngliche Akzentfarbe
+
+            if (lightModeToggle) lightModeToggle.checked = false;
             closeSettingsModalButton.style.pointerEvents = 'auto';
-        }, 4000); // 4 Sekunden Verzögerung
-    } else {
-        // Sollte nicht direkt hier landen, da der Timeout es zurücksetzt, aber als Fallback:
-        document.body.style.filter = '';
-        lightModeWarningModal.classList.add('hidden');
-        closeSettingsModalButton.style.pointerEvents = 'auto';
+            lightModeActive = false;
+        }, 5000);
     }
 }
+
 
 import { initThreeJS } from './threejs-background.js';
 function initThreeJSBackground() {
