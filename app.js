@@ -39,14 +39,12 @@ const settingsModal = document.getElementById('settings-modal');
 const colorPickerSection = document.getElementById('color-picker-section');
 const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
-
-const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button'); // Button IM Settings Modal
+const openChangeTokenModalButton = document.getElementById('open-change-token-modal-button');
 const changeTokenModal = document.getElementById('change-token-modal');
 const changeTokenForm = document.getElementById('change-token-form');
 const newApiTokenInput = document.getElementById('new-api-token-input');
 const cancelChangeTokenButton = document.getElementById('cancel-change-token-button');
 const changeTokenMessage = document.getElementById('change-token-message');
-
 const lightModeToggle = document.getElementById('light-mode-toggle');
 const lightModeWarningModal = document.getElementById('lightmode-warning-modal');
 const alarmOverlay = document.getElementById('alarm-overlay');
@@ -161,13 +159,9 @@ async function init() {
     closeSettingsModalButton.addEventListener('click', closeSettingsModal);
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
-
-    // Event-Listener für "API Token ändern" Button IM Settings Modal
     if (openChangeTokenModalButton) openChangeTokenModalButton.addEventListener('click', openChangeTokenModal);
-    // Event-Listener für das Formular im "API Token ändern" Modal
     if (changeTokenForm) changeTokenForm.addEventListener('submit', handleChangeTokenFormSubmit);
     if (cancelChangeTokenButton) cancelChangeTokenButton.addEventListener('click', closeChangeTokenModal);
-
     if (lightModeToggle) lightModeToggle.addEventListener('change', toggleLightMode);
 
     await loadWfcdRelicData();
@@ -337,7 +331,7 @@ async function loadAlecaFrameData() { /* ... (Code bleibt gleich) ... */
     }
 }
 
-function displayGeneralStats(latestDataPoint) {
+function displayGeneralStats(latestDataPoint) { /* ... (Code mit percentageCompletionDisplay) ... */
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -395,7 +389,7 @@ function createCurrencyCharts(generalDataPoints) { /* ... (Code bleibt gleich) .
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-async function loadWfcdRelicData() {
+async function loadWfcdRelicData() { /* ... (Code bleibt gleich) ... */
     if (wfcdRelicMap.size > 0) { return; }
     console.log("Lade WFCD Relic.json für Map-Erstellung...");
     showApiLoader();
@@ -484,7 +478,7 @@ function parseAndDisplayRelicInventory(base64ApiResponse) { /* ... (Code bleibt 
     }
 }
 
-function displayRelics(relicsToDisplay) { /* ... (Code mit DocumentFragment und Tier-Fallback) ... */
+function displayRelics(relicsToDisplay) { /* ... (Code bleibt gleich) ... */
     if (!relicsToDisplay || relicsToDisplay.length === 0) {
         relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Keine Relikte zum Anzeigen.</p>'; return;
     }
@@ -515,7 +509,7 @@ function displayRelics(relicsToDisplay) { /* ... (Code mit DocumentFragment und 
     relicInventoryGrid.appendChild(fragment);
 }
 
-function showRelicTooltip(event, relicData) { /* ... (Code mit korrigierter Sortierung und Beschreibung) ... */
+function showRelicTooltip(event, relicData) { /* ... (Code bleibt gleich) ... */
     if (!relicData) return;
     const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
     let tooltipContent = `<h3 class="font-orbitron text-base text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h3>`;
@@ -550,26 +544,10 @@ function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
 // --- Überarbeitete Tooltip Positionierung ---
 function moveRelicTooltip(event) {
     if (!relicTooltip || relicTooltip.classList.contains('hidden')) return;
-
-    const x = event.pageX + 15; // pageX/Y für absolute Position im Dokument
-    const y = event.pageY + 15;
-
-    relicTooltip.style.left = `${x}px`;
-    relicTooltip.style.top = `${y}px`;
-
-    // Optionale Kollisionserkennung mit Viewport, um es ggf. auf die andere Seite der Maus zu schieben
-    const tooltipRect = relicTooltip.getBoundingClientRect(); // Bekomme Dimensionen *nachdem* Inhalt gesetzt wurde
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    if (event.clientX + 15 + tooltipRect.width > viewportWidth - 10) { // mX ist event.clientX
-        relicTooltip.style.left = `${event.pageX - tooltipRect.width - 15}px`;
-    }
-    if (event.clientY + 15 + tooltipRect.height > viewportHeight - 10) { // mY ist event.clientY
-        relicTooltip.style.top = `${event.pageY - tooltipRect.height - 15}px`;
-    }
+    // Positioniere direkt am Mauszeiger, ohne Rand-Kollision oder Offset
+    relicTooltip.style.left = `${event.pageX}px`;
+    relicTooltip.style.top = `${event.pageY}px`;
 }
-
 
 function openSettingsModal() {
     if(colorPickerSection) colorPickerSection.classList.remove('hidden');
@@ -580,7 +558,7 @@ function closeSettingsModal() { if(settingsModal) settingsModal.classList.add('h
 let lightModeActive = false;
 let alarmInterval = null;
 
-function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
+function toggleLightMode() { /* Light Mode Dauer auf ca. 7 Sekunden reduziert */
     if (!lightModeToggle || !lightModeWarningModal || !alarmOverlay) { return; }
     if (lightModeToggle.checked && !lightModeActive) {
         lightModeActive = true;
@@ -590,7 +568,6 @@ function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
         originalCssVars['--text-secondary'] = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
         originalCssVars['bodyBg'] = document.body.style.backgroundColor;
         originalCssVars['bodyColor'] = document.body.style.color;
-        // originalAccentColor ist bereits global gespeichert
 
         document.body.classList.add("light-mode-active-override");
         document.body.style.backgroundColor = '#f0f0f0';
@@ -607,7 +584,7 @@ function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
             p.style.boxShadow = '0 0 10px 0px rgba(150, 150, 150, 0.1)';
         });
 
-        setTimeout(() => {
+        setTimeout(() => { // Start des Alarms nach kurzer Hell-Phase
             alarmOverlay.style.display = 'block';
             let isRedAlarm = true;
             if(alarmInterval) clearInterval(alarmInterval);
@@ -619,7 +596,7 @@ function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
             if(lightModeWarningModal) lightModeWarningModal.classList.remove('hidden');
             if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'none';
 
-            setTimeout(() => {
+            setTimeout(() => { // Dauer des Alarms + Anzeige der Nachricht (ca. 6.3 Sekunden)
                 clearInterval(alarmInterval);
                 alarmOverlay.style.display = 'none';
                 if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
@@ -642,9 +619,10 @@ function toggleLightMode() { /* ... (Code mit erhöhter Dauer) ... */
                 if (lightModeToggle) lightModeToggle.checked = false;
                 if(closeSettingsModalButton) closeSettingsModalButton.style.pointerEvents = 'auto';
                 lightModeActive = false;
-            }, 9300); // Gesamtdauer jetzt 0.7s (hell) + 9.3s (Alarm) = 10 Sekunden
+            }, 6300); // Ergibt mit den 700ms vorher ca. 7 Sekunden Gesamtdauer
         }, 700);
     } else if (!lightModeToggle.checked && lightModeActive) {
+        // Manueller Reset Code (bleibt gleich)
         clearInterval(alarmInterval);
         alarmOverlay.style.display = 'none';
         if(lightModeWarningModal) lightModeWarningModal.classList.add('hidden');
