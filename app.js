@@ -1,47 +1,41 @@
 // Globale Konstanten und Zustandsvariablen
-const API_BASE_URL = 'php/'; // Basis-URL für PHP-Skripte
+const API_BASE_URL = 'php/';
 const CORS_PROXY_URL = 'https://api.allorigins.win/raw?url=';
 const WFCD_RELICS_URL = 'https://cdn.jsdelivr.net/gh/WFCD/warframe-items/data/json/Relics.json';
 const WFCD_IMAGE_CDN = 'https://cdn.warframestat.us/img/';
 
-let currentUser = null; // Speichert Benutzerdaten nach Login
-let wfcdRelicData = null; // Speichert die geladenen Relic.json Daten
-let userRelicInventory = null; // Speichert das geparste Relikt-Inventar (oder die Roh-Bytes/Base64 davon)
-let lastFetchedBase64RelicData = null; // Um die Rohdaten für erneutes Parsen zu halten
-let amChartsInstances = { credits: null, platinum: null, endo: null }; // Für Chart-Instanzen
+let currentUser = null;
+let wfcdRelicMap = new Map(); // NEU: Map für schnellen Zugriff auf WFCD-Daten via normalisiertem Namen
+let userRelicInventory = null;
+let lastFetchedBase64RelicData = null;
+let amChartsInstances = { credits: null, platinum: null, endo: null };
 
-// DOM-Elemente
+// DOM-Elemente (Kurzreferenzen, da schon bekannt)
 const systemBootLoader = document.getElementById('system-boot-loader');
 const apiLoader = document.getElementById('api-loader');
 const appContainer = document.getElementById('app-container');
-
+// ... (weitere DOM-Elemente wie gehabt) ...
 const loginSection = document.getElementById('login-section');
 const registerSection = document.getElementById('register-section');
 const dashboardSection = document.getElementById('dashboard-section');
-
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
 const loginMessage = document.getElementById('login-message');
 const registerMessage = document.getElementById('register-message');
-
 const showRegisterButton = document.getElementById('show-register-button');
 const showLoginButton = document.getElementById('show-login-button');
-
 const usernameDisplay = document.getElementById('username-display');
 const logoutButton = document.getElementById('logout-button');
 const settingsButton = document.getElementById('settings-button');
-
 const alecaFrameTokenSection = document.getElementById('alecaframe-token-section');
 const alecaFrameTokenInput = document.getElementById('alecaframe-token-input');
 const saveAlecaFrameTokenButton = document.getElementById('save-alecaframe-token-button');
 const alecaFrameTokenMessage = document.getElementById('alecaframe-token-message');
-
 const statsSection = document.getElementById('stats-section');
 const generalStatsDisplay = document.getElementById('general-stats-display');
 const relicInventorySection = document.getElementById('relic-inventory-section');
 const relicInventoryGrid = document.getElementById('relic-inventory-grid');
 const relicTooltip = document.getElementById('relic-tooltip');
-
 const settingsModal = document.getElementById('settings-modal');
 const settingsAccessCodeSection = document.getElementById('settings-access-code-section');
 const settingsAccessCodeInput = document.getElementById('settings-access-code-input');
@@ -52,31 +46,22 @@ const colorChoiceButtons = document.querySelectorAll('.color-choice-button');
 const closeSettingsModalButton = document.getElementById('close-settings-modal');
 
 
-// Hilfsfunktionen
-function showApiLoader() {
-    apiLoader.classList.remove('hidden');
-}
-
-function hideApiLoader() {
-    apiLoader.classList.add('hidden');
-}
-
+// --- Hilfsfunktionen ---
+function showApiLoader() { apiLoader.classList.remove('hidden'); }
+function hideApiLoader() { apiLoader.classList.add('hidden'); }
 function displayMessage(element, message, isError = false) {
     element.textContent = message;
     element.className = `mt-2 text-sm text-center ${isError ? 'text-red-400' : 'text-green-400'}`;
     if (message) element.classList.remove('hidden'); else element.classList.add('hidden');
 }
-
 function showView(viewToShow) {
     [loginSection, registerSection, dashboardSection].forEach(section => section.classList.add('hidden'));
     if (viewToShow) viewToShow.classList.remove('hidden');
 }
-
 function hexToRgb(hex) {
     const bigint = parseInt(hex.slice(1), 16);
     return `${(bigint >> 16) & 255},${(bigint >> 8) & 255},${bigint & 255}`;
 }
-
 function lightenHexColor(hex, percent) {
     hex = hex.replace(/^\s*#|\s*$/g, '');
     if (hex.length === 3) hex = hex.replace(/(.)/g, '$1$1');
@@ -86,7 +71,6 @@ function lightenHexColor(hex, percent) {
     const newB = Math.min(255, Math.floor(b * (1 + percent / 100)));
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
-
 function applyAccentColor(primaryColor) {
     const secondaryColor = lightenHexColor(primaryColor, 40);
     document.documentElement.style.setProperty('--primary-accent', primaryColor);
@@ -98,11 +82,30 @@ function applyAccentColor(primaryColor) {
     });
     localStorage.setItem('accentColor', primaryColor);
 }
-
 function loadAccentColor() {
     const savedColor = localStorage.getItem('accentColor');
     applyAccentColor(savedColor || getComputedStyle(document.documentElement).getPropertyValue('--primary-accent').trim());
 }
+
+// --- NEU: Relikt-Namen Normalisierungsfunktion ---
+/**
+ * Normalisiert einen Relikt-Namen für den Abgleich zwischen APIs.
+ * Beispiel: "Lith L5 Relic (Radiant)" -> "lith l5"
+ * @param {string} name - Der ursprüngliche Relikt-Name.
+ * @returns {string} - Der normalisierte Name.
+ */
+function normalizeRelicName(name) {
+    if (typeof name !== 'string') return '';
+    return name.toLowerCase()
+               .replace(/\s*\([\w\s]+\)\s*$/, '') // Entfernt Anhängsel wie (Radiant), (Intact) etc.
+               .replace(/relic/g, '')          // Entfernt das Wort "relic"
+               .replace(/prime vault/g, '')     // Entfernt "prime vault"
+               .replace(/vaulted/g, '')         // Entfernt "vaulted"
+               .replace(/\[|\]/g, '')           // Entfernt eckige Klammern
+               .replace(/\s+/g, ' ')             // Mehrfache Leerzeichen zu einem
+               .trim();                          // Leerzeichen am Anfang/Ende entfernen
+}
+
 
 async function init() {
     loadAccentColor();
@@ -126,11 +129,12 @@ async function init() {
     colorChoiceButtons.forEach(button => button.addEventListener('click', (e) => applyAccentColor(e.target.dataset.color)));
     saveAlecaFrameTokenButton.addEventListener('click', handleSaveAndLoadAlecaFrameToken);
 
-    await checkUserSession();
-    await loadWfcdRelicData();
+    await loadWfcdRelicData(); // WFCD Daten zuerst laden, damit die Map bereit ist
+    await checkUserSession();  // Dann Session prüfen und ggf. AlecaFrame Daten laden
 }
 
-async function handleLogin(event) {
+// Authentifizierungsfunktionen (bleiben im Wesentlichen gleich)
+async function handleLogin(event) { /* ... wie gehabt ... */
     event.preventDefault(); displayMessage(loginMessage, '');
     const body = { username: loginForm.username.value, password: loginForm.password.value };
     showApiLoader();
@@ -142,8 +146,7 @@ async function handleLogin(event) {
         } else { displayMessage(loginMessage, data.error || 'Login fehlgeschlagen.', true); }
     } catch (e) { displayMessage(loginMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-
-async function handleRegister(event) {
+async function handleRegister(event) { /* ... wie gehabt ... */
     event.preventDefault(); displayMessage(registerMessage, '');
     const body = { username: registerForm.username.value, password: registerForm.password.value, access_code: registerForm.access_code.value };
     showApiLoader();
@@ -155,8 +158,7 @@ async function handleRegister(event) {
         } else { displayMessage(registerMessage, data.error || 'Registrierung fehlgeschlagen.', true); }
     } catch (e) { displayMessage(registerMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
-
-async function checkUserSession() {
+async function checkUserSession() { /* ... wie gehabt ... */
     showApiLoader();
     try {
         const response = await fetch(`${API_BASE_URL}check_session.php`, { method: 'GET' });
@@ -164,8 +166,7 @@ async function checkUserSession() {
         if (response.ok && data.loggedIn) { currentUser = data.user; await afterLogin(); } else { showView(loginSection); }
     } catch (e) { showView(loginSection); } finally { hideApiLoader(); }
 }
-
-async function afterLogin() {
+async function afterLogin() { /* ... wie gehabt ... */
     if (!currentUser) return;
     usernameDisplay.textContent = currentUser.username;
     showView(dashboardSection);
@@ -178,8 +179,7 @@ async function afterLogin() {
         displayMessage(alecaFrameTokenMessage, 'AlecaFrame Token eingeben.', false);
     }
 }
-
-async function handleLogout() {
+async function handleLogout() { /* ... wie gehabt ... */
     showApiLoader();
     try { await fetch(`${API_BASE_URL}logout.php`, { method: 'POST' }); } catch (e) { console.error('Logout Fehler:', e); }
     finally {
@@ -193,8 +193,7 @@ async function handleLogout() {
         hideApiLoader();
     }
 }
-
-async function handleSaveAndLoadAlecaFrameToken() {
+async function handleSaveAndLoadAlecaFrameToken() { /* ... wie gehabt ... */
     const token = alecaFrameTokenInput.value.trim();
     if (!token) { displayMessage(alecaFrameTokenMessage, 'Token darf nicht leer sein.', true); return; }
     showApiLoader();
@@ -208,6 +207,7 @@ async function handleSaveAndLoadAlecaFrameToken() {
     } catch (e) { displayMessage(alecaFrameTokenMessage, 'Netzwerkfehler.', true); } finally { hideApiLoader(); }
 }
 
+// --- AlecaFrame Datenverarbeitung ---
 async function loadAlecaFrameData(token) {
     if (!token) { statsSection.classList.add('hidden'); relicInventorySection.classList.add('hidden'); displayMessage(alecaFrameTokenMessage, 'Kein Token.', true); return; }
     displayMessage(alecaFrameTokenMessage, ''); showApiLoader();
@@ -217,22 +217,16 @@ async function loadAlecaFrameData(token) {
         const statsUrl = `${CORS_PROXY_URL}${encodeURIComponent(`https://stats.alecaframe.com/api/stats/public?token=${token}`)}`;
         const statsResponse = await fetch(statsUrl);
         if (!statsResponse.ok) throw new Error(`AlecaFrame Stats API: ${statsResponse.status} ${statsResponse.statusText}`);
-
-        const responseText = await statsResponse.text(); // Erst als Text lesen für Debugging
+        const responseText = await statsResponse.text();
         console.log("Rohe Antwort von AlecaFrame Stats API (via Proxy):", responseText);
-        const statsData = JSON.parse(responseText); // Dann parsen
+        const statsData = JSON.parse(responseText);
 
-        // Prüfe auf Fehlerstruktur vom Proxy/API (basierend auf dem Log-Beispiel)
         if (statsData.type && statsData.title && statsData.status && statsData.status >= 400) {
-            console.error(`Fehler von API/Proxy erhalten: Status ${statsData.status} - ${statsData.title}`, statsData);
             throw new Error(`API Fehler: "${statsData.title}" (Status ${statsData.status}). Token prüfen oder später versuchen.`);
         }
-
-        if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`); // Direkter AlecaFrame Fehler
-
-        // Verbesserte Prüfung und Logging für generalDataPoints
+        if (statsData.error) throw new Error(`AlecaFrame API Fehler: ${statsData.error}`);
         if (!statsData.generalDataPoints) {
-            console.error("Fehlende 'generalDataPoints' in AlecaFrame Stats Antwort. Empfangene Keys:", Object.keys(statsData));
+            console.error("Fehlende 'generalDataPoints'. Empfangene Keys:", Object.keys(statsData));
             throw new Error("Stats: 'generalDataPoints' fehlt. Unerwartete API-Antwortstruktur.");
         }
 
@@ -254,7 +248,7 @@ async function loadAlecaFrameData(token) {
     } finally { hideApiLoader(); }
 }
 
-function displayGeneralStats(latestDataPoint) {
+function displayGeneralStats(latestDataPoint) { /* ... wie gehabt, ggf. anpassen ... */
     let html = '<h4 class="text-lg font-heading mb-2">Account Übersicht</h4><div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">';
     const format = (num) => typeof num === 'number' ? num.toLocaleString() : (num !== undefined ? num : 'N/A');
     html += `<div><span class="text-text-secondary">Credits:</span> <span class="text-primary-accent">${format(latestDataPoint.credits)}</span></div>`;
@@ -268,8 +262,7 @@ function displayGeneralStats(latestDataPoint) {
     html += '</div>';
     generalStatsDisplay.innerHTML = html;
 }
-
-function createCurrencyCharts(generalDataPoints) {
+function createCurrencyCharts(generalDataPoints) { /* ... wie gehabt ... */
     const createChart = (containerId, dataArray, valueFieldName, colorHex, currencyName) => {
         const chartContainer = document.getElementById(containerId);
         if (!chartContainer) { console.error(`Chart Container ${containerId} fehlt.`); return; }
@@ -303,101 +296,124 @@ function createCurrencyCharts(generalDataPoints) {
     createChart('endo-chart-container', generalDataPoints, 'endo', '#FFD700', 'Endo');
 }
 
-function parseAndDisplayRelicInventory(base64Data) {
+// --- WFCD Item Database ---
+async function loadWfcdRelicData() {
+    if (wfcdRelicMap.size > 0) { // Prüfe, ob die Map bereits gefüllt ist
+        console.log("WFCD Relic Map bereits initialisiert.");
+        return;
+    }
+    console.log("Lade WFCD Relic.json für Map-Erstellung...");
+    showApiLoader();
+    try {
+        const response = await fetch(WFCD_RELICS_URL);
+        if (!response.ok) throw new Error(`WFCD Relic.json: ${response.statusText}`);
+        const itemsArray = await response.json();
+
+        wfcdRelicMap.clear(); // Sicherstellen, dass die Map leer ist, bevor sie gefüllt wird
+        itemsArray.forEach(item => {
+            const normalizedKey = normalizeRelicName(item.name);
+            if (normalizedKey) { // Nur hinzufügen, wenn ein gültiger Schlüssel erzeugt wurde
+                wfcdRelicMap.set(normalizedKey, item);
+            }
+        });
+        console.log('WFCD Relic Map initialisiert:', wfcdRelicMap.size, "Einträge");
+
+        // Wenn Relikt-Inventar auf diese Daten gewartet hat, neu parsen/anzeigen
+        if (lastFetchedBase64RelicData && relicInventoryGrid.innerHTML.includes("Lade Relikt-DB...")) {
+            parseAndDisplayRelicInventory(lastFetchedBase64RelicData);
+        }
+    } catch (error) {
+        console.error('WFCD Ladefehler für Map:', error);
+        if(relicInventoryGrid && (relicInventoryGrid.innerHTML === '' || relicInventoryGrid.innerHTML.includes("Lade Relikt-DB..."))) {
+            relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">Fehler Laden Relikt-DB: ${error.message}</p>`;
+        }
+    } finally { hideApiLoader(); }
+}
+
+
+// --- Relikt Inventar Verarbeitung ---
+function parseAndDisplayRelicInventory(base64ApiResponse) {
     relicInventoryGrid.innerHTML = '';
     try {
-        if (!base64Data) throw new Error("Keine Base64 Relikt-Daten.");
+        if (!base64ApiResponse) throw new Error("Keine Base64 Relikt-Daten von API.");
 
-        // NEU: Erst JSON parsen, um den inneren Base64-String zu erhalten, wie in deinem alten Code.
         let actualBase64String;
         try {
-            // Annahme: Die API-Antwort (base64Data) ist ein JSON-String, der den Base64-Datenstring enthält.
-            // z.B. "\"SGVsbG8gd29ybGQ=\\\"" wird zu "SGVsbG8gd29ybGQ="
-            actualBase64String = JSON.parse(base64Data);
+            actualBase64String = JSON.parse(base64ApiResponse);
             if (typeof actualBase64String !== 'string') {
-                console.warn('Nach JSON.parse der Relikt-Antwort war das Ergebnis kein String. Typ:', typeof actualBase64String, "Wert:", actualBase64String, "Original:", base64Data);
-                actualBase64String = base64Data; // Fallback, falls die API doch direkt Base64 sendet oder ein unerwartetes JSON-Objekt
+                console.warn('Relikt-Antwort (nach JSON.parse) ist kein String. Typ:', typeof actualBase64String);
+                actualBase64String = base64ApiResponse; // Fallback zum direkten String
             }
         } catch (e) {
-            // Wenn das JSON.parse fehlschlägt, war es vielleicht doch direkt Base64 (wie von Swagger angedeutet).
-            console.warn('JSON.parse der Relikt-Antwort fehlgeschlagen, versuche direkten Base64-String. Fehler:', e);
-            actualBase64String = base64Data; // Fallback zum direkten String
+            console.warn('JSON.parse der Relikt-Antwort fehlgeschlagen, verwende direkten String. Fehler:', e);
+            actualBase64String = base64ApiResponse;
         }
 
-        if (!actualBase64String) throw new Error("Konnte keinen gültigen Base64-String aus der Relikt-Antwort extrahieren.");
+        if (!actualBase64String) throw new Error("Konnte keinen Base64-String aus Relikt-Antwort extrahieren.");
 
         const binaryString = atob(actualBase64String);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
-        if (bytes.length === 0 && actualBase64String.length > 0) throw new Error("Relikt-Inventar dekodiert zu Länge 0 trotz vorhandener Base64-Daten.");
-        if (bytes.length === 0) throw new Error("Relikt-Inventar leer/dekodierfehler.");
+        if (bytes.length === 0 && actualBase64String.length > 0) throw new Error("Relikt-Inventar dekodiert zu Länge 0.");
+        if (bytes.length === 0) throw new Error("Relikt-Inventar leer/Dekodierfehler.");
 
-        // Die Prüfung auf Fehlertext im Binärcode ist weniger zuverlässig, wenn es wirklich binär ist.
-        // Besser ist die Fehlerbehandlung beim API-Aufruf selbst.
-        // if (bytes.length < 500 && new TextDecoder().decode(bytes).toLowerCase().match(/error|token|invalid/)) throw new Error("Relikt API Antwort: " + new TextDecoder().decode(bytes).substring(0,150));
-
-        if (!wfcdRelicData) {
-            relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Lade Relikt-DB...</p>';
-            setTimeout(() => parseAndDisplayRelicInventory(base64Data), 2000); return; // Wichtig: base64Data (Original) erneut übergeben
+        if (wfcdRelicMap.size === 0) { // WFCD Map muss geladen sein
+            relicInventoryGrid.innerHTML = '<p class="text-text-secondary col-span-full text-center">Warte auf WFCD Relikt-Datenbank...</p>';
+            setTimeout(() => parseAndDisplayRelicInventory(base64ApiResponse), 2000);
+            return;
         }
 
         const dataView = new DataView(bytes.buffer);
         let offset = 0;
         const numRelicTypes = dataView.getUint32(offset, true); offset += 4;
-        console.log("Anzahl verschiedener Relikt-Typen im Inventar:", numRelicTypes);
         userRelicInventory = [];
 
-        const relicTierMap = ["Lith", "Meso", "Neo", "Axi", "Requiem"];
-        // Refinement ist für die Anzeige des Inventars weniger relevant, da wir nur den Namen brauchen.
+        const relicTierApiMap = ["Lith", "Meso", "Neo", "Axi", "Requiem"]; // Für AlecaFrame Byte-Wert
 
         for (let i = 0; i < numRelicTypes; i++) {
             if (offset + 9 > bytes.length) { console.error("Nicht genug Daten für Relikt #", i); break; }
             const typeByte = dataView.getUint8(offset); offset += 1;
-            const refinementByte = dataView.getUint8(offset); offset += 1; // Wird aktuell nicht direkt verwendet für Namensfindung
+            const refinementByte = dataView.getUint8(offset); offset += 1; // Aktuell nicht für Abgleich verwendet
 
             let nameChars = [];
             for(let j=0; j < 3; j++) nameChars.push(String.fromCharCode(dataView.getUint8(offset + j)));
             offset += 3;
-            const relicShortName = nameChars.join('').trim();
+            const alecaRelicShortName = nameChars.join('').trim();
             const count = dataView.getUint32(offset, true); offset += 4;
 
-            const tierName = relicTierMap[typeByte] || "UnknownTier";
-            const fullRelicName = `${tierName} ${relicShortName}`; // z.B. "Lith L1"
+            const alecaTierName = relicTierApiMap[typeByte] || "UnknownTier";
+            // Erzeuge den normalisierten Schlüssel aus AlecaFrame-Daten
+            const normalizedAlecaName = normalizeRelicName(`${alecaTierName} ${alecaRelicShortName}`);
 
-            // Finde das passende Relikt in wfcdRelicData
-            // uniqueName in WFCD ist oft /Lotus/Types/Items/VoidRelics/RelicName (z.B. /Lotus/Types/Items/VoidRelics/LithL1Relic)
-            // Wir müssen also etwas flexibler suchen.
-            const wfcdDetail = wfcdRelicData.find(w => {
-                // Erzeuge einen vergleichbaren Namen aus uniqueName
-                const wfcdKeyPart = w.uniqueName.split('/').pop().replace(/Relic$/, '').replace(tierName, '').trim();
-                return w.name.includes(tierName) && w.name.includes(relicShortName) && wfcdKeyPart.toUpperCase() === relicShortName.toUpperCase();
-            });
+            const wfcdDetail = wfcdRelicMap.get(normalizedAlecaName);
 
             if (wfcdDetail) {
-                userRelicInventory.push({ ...wfcdDetail, count: count, apiTierName: tierName, apiShortName: relicShortName });
-            } else {
-                console.warn(`Kein WFCD Detail für ${fullRelicName} (TierByte: ${typeByte}, Short: ${relicShortName}) gefunden.`);
-                // Fallback-Objekt, falls kein Detail gefunden wird, um es dennoch anzuzeigen
                 userRelicInventory.push({
-                    name: fullRelicName,
-                    uniqueName: `unknown_${tierName}_${relicShortName}`,
-                    tier: tierName,
-                    imageName: '', // Kein Bild bekannt
+                    ...wfcdDetail, // Alle Daten von WFCD
+                    count: count,  // Anzahl von AlecaFrame
+                    // Ggf. apiTierName und apiShortName für Debugging beibehalten, falls nötig
+                    // apiTierName: alecaTierName,
+                    // apiShortName: alecaRelicShortName
+                });
+            } else {
+                console.warn(`Kein WFCD Detail für normalisierten Namen "${normalizedAlecaName}" (Original Aleca: ${alecaTierName} ${alecaRelicShortName}) gefunden.`);
+                userRelicInventory.push({
+                    name: `${alecaTierName} ${alecaRelicShortName}`,
+                    uniqueName: `unknown_${normalizedAlecaName.replace(/\s+/g, '_')}`,
+                    tier: alecaTierName,
+                    imageName: '',
                     rewards: [],
-                    vaulted: false, // Unbekannt
+                    vaulted: false,
                     count: count,
-                    apiTierName: tierName,
-                    apiShortName: relicShortName
                 });
             }
         }
-        console.log("Geparstes User Relikt Inventar:", userRelicInventory);
         displayRelics(userRelicInventory);
 
     } catch (error) {
         console.error("Fehler Parsen Relikt-Inventar:", error);
-        relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">Fehler: ${error.message}</p>`;
+        relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">Fehler Relikt-Verarbeitung: ${error.message}</p>`;
         userRelicInventory = null;
     }
 }
@@ -409,10 +425,10 @@ function displayRelics(relicsToDisplay) {
     relicInventoryGrid.innerHTML = '';
 
     relicsToDisplay.forEach(relic => {
-        const imageName = relic.imageName || `${(relic.apiTierName || relic.tier || '').toLowerCase()}${(relic.apiShortName || '').toLowerCase().replace(/\s+/g, '')}relicint.png`; // Besserer Fallback für imageName
-        const isVaulted = relic.vaulted ? "[VAULTED] " : "";
-        const displayName = relic.name.startsWith(relic.tier || relic.apiTierName) ? relic.name : `${relic.tier || relic.apiTierName} ${relic.name}`;
-
+        // Verwende direkt die Daten aus dem (hoffentlich) angereicherten Relikt-Objekt
+        const imageName = relic.imageName || `${(relic.tier || '').toLowerCase()}${(relic.name || '').split(' ').pop().toLowerCase()}relicint.png`; // Fallback für imageName
+        const isVaulted = relic.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span> " : "";
+        const displayName = relic.name; // Sollte jetzt der volle Name aus WFCD sein
 
         const relicElement = document.createElement('div');
         relicElement.className = 'panel !p-2 flex flex-col items-center text-center cursor-pointer interactive-element transition-all hover:scale-105 focus-within:ring-2 focus-within:ring-primary-accent';
@@ -420,7 +436,7 @@ function displayRelics(relicsToDisplay) {
         relicElement.innerHTML = `
             <img src="${WFCD_IMAGE_CDN}${imageName}" alt="${displayName}" class="w-16 h-16 mb-1 object-contain" loading="lazy" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div class=\\'w-16 h-16 mb-1 flex items-center justify-center bg-bg-surface text-text-secondary text-xs rounded-sm\\'>N/A</div>');">
             <p class="text-xs font-semibold">${isVaulted}${displayName}</p>
-            <p class="text-xs text-text-secondary">Tier: ${relic.tier || relic.apiTierName}</p>
+            <p class="text-xs text-text-secondary">Tier: ${relic.tier}</p>
             <p class="text-xs text-primary-accent">Anzahl: ${relic.count !== undefined ? relic.count : 'N/A'}</p>
         `;
         relicElement.addEventListener('mouseenter', (event) => showRelicTooltip(event, relic));
@@ -432,29 +448,32 @@ function displayRelics(relicsToDisplay) {
     });
 }
 
-function showRelicTooltip(event, relic) {
-    if (!relic || !wfcdRelicData) return;
-    const detailedRelic = wfcdRelicData.find(r => r.uniqueName === relic.uniqueName) || relic; // Finde volles Detail falls nötig
-    const displayName = detailedRelic.name.startsWith(detailedRelic.tier || detailedRelic.apiTierName) ? detailedRelic.name : `${detailedRelic.tier || detailedRelic.apiTierName} ${detailedRelic.name}`;
+function showRelicTooltip(event, relicData) { // relicData sollte jetzt das angereicherte Objekt sein
+    if (!relicData) return;
+    const isVaultedText = relicData.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : "";
+    let tooltipContent = `<h5 class="font-bold text-primary-accent mb-1">${relicData.name} ${isVaultedText}</h5>`;
 
-    let tooltipContent = `<h5 class="font-bold text-primary-accent mb-1">${displayName} ${detailedRelic.vaulted ? "<span class='text-yellow-400 text-xs font-normal'>[VAULTED]</span>" : ""}</h5>`;
-    if (detailedRelic.rewards && Array.isArray(detailedRelic.rewards)) {
-        tooltipContent += '<p class="text-xs text-text-secondary mb-1">Mögliche Belohnungen (Top 3):</p><ul class="list-none text-xs space-y-0.5">';
-        const sorted = [...detailedRelic.rewards].sort((a,b) => ({ "Common": 3, "Uncommon": 2, "Rare": 1 }[a.rarity]||4) - ({ "Common": 3, "Uncommon": 2, "Rare": 1 }[b.rarity]||4) || a.itemName.localeCompare(b.itemName));
-        sorted.slice(0, 3).forEach(item => {
+    if (relicData.rewards && Array.isArray(relicData.rewards)) {
+        tooltipContent += '<p class="text-xs text-text-secondary mb-1">Top 3 Belohnungen:</p><ul class="list-none text-xs space-y-0.5">';
+        const rarityOrder = { "Rare": 1, "Uncommon": 2, "Common": 3 };
+        const sortedRewards = [...relicData.rewards].sort((a,b) =>
+            (rarityOrder[a.rarity] || 4) - (rarityOrder[b.rarity] || 4) ||
+            b.chance - a.chance || // Sekundär nach Chance, falls Seltenheit gleich
+            a.itemName.localeCompare(b.itemName)
+        );
+        sortedRewards.slice(0, 3).forEach(item => {
             const rarityColor = item.rarity === "Rare" ? "text-yellow-400" : item.rarity === "Uncommon" ? "text-gray-300" : "text-text-primary";
-            tooltipContent += `<li><span class="${rarityColor}">${item.itemName}</span> (${item.rarity}, ${item.chance}%)</li>`;
+            tooltipContent += `<li><span class="${rarityColor}">${item.itemName}</span> (${item.rarity}) - ${item.chance}%</li>`;
         });
-        if (sorted.length > 3) tooltipContent += `<li>... und ${sorted.length - 3} weitere</li>`;
+        if (sortedRewards.length > 3) tooltipContent += `<li>... und ${sortedRewards.length - 3} weitere</li>`;
         tooltipContent += '</ul>';
     } else { tooltipContent += '<p class="text-xs text-text-secondary">Keine Belohnungsdetails.</p>'; }
     relicTooltip.innerHTML = tooltipContent;
     relicTooltip.classList.remove('hidden');
     moveRelicTooltip(event);
 }
-
 function hideRelicTooltip() { relicTooltip.classList.add('hidden'); }
-function moveRelicTooltip(event) {
+function moveRelicTooltip(event) { /* ... wie gehabt ... */
     if (relicTooltip.classList.contains('hidden')) return;
     const { clientX:mX, clientY:mY } = event; const rect = relicTooltip.getBoundingClientRect();
     let x = mX + 20, y = mY + 20;
@@ -464,41 +483,25 @@ function moveRelicTooltip(event) {
     relicTooltip.style.left = `${x}px`; relicTooltip.style.top = `${y}px`;
 }
 
-async function loadWfcdRelicData() {
-    if (wfcdRelicData) return;
-    console.log("Lade WFCD Relic.json..."); showApiLoader();
-    try {
-        const response = await fetch(WFCD_RELICS_URL);
-        if (!response.ok) throw new Error(`WFCD Relic.json: ${response.statusText}`);
-        wfcdRelicData = await response.json();
-        console.log('WFCD Relic.json geladen:', wfcdRelicData.length, "Relikte");
-        if (lastFetchedBase64RelicData && relicInventoryGrid.innerHTML.includes("Lade Relikt-DB...")) {
-            parseAndDisplayRelicInventory(lastFetchedBase64RelicData);
-        }
-    } catch (error) {
-        console.error('WFCD Ladefehler:', error);
-        if(relicInventoryGrid && (relicInventoryGrid.innerHTML === '' || relicInventoryGrid.innerHTML.includes("Lade Relikt-DB..."))) {
-            relicInventoryGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">Fehler Laden Relikt-DB: ${error.message}</p>`;
-        }
-    } finally { hideApiLoader(); }
-}
-
-function openSettingsModal() {
+// --- Einstellungs-Modal (bleibt gleich) ---
+function openSettingsModal() { /* ... wie gehabt ... */
     settingsModal.classList.remove('hidden'); settingsAccessCodeSection.classList.remove('hidden');
     colorPickerSection.classList.add('hidden'); settingsAccessCodeInput.value = '';
     displayMessage(settingsAccessMessage, ''); settingsAccessCodeInput.focus();
 }
 function closeSettingsModal() { settingsModal.classList.add('hidden'); }
-function checkSettingsAccessCode() {
+function checkSettingsAccessCode() { /* ... wie gehabt ... */
     if (settingsAccessCodeInput.value === "69420") {
         settingsAccessCodeSection.classList.add('hidden'); colorPickerSection.classList.remove('hidden'); displayMessage(settingsAccessMessage, '');
     } else { displayMessage(settingsAccessMessage, 'Falscher Code.', true); }
 }
 
+// --- Three.js Hintergrund (bleibt gleich) ---
 import { initThreeJS } from './threejs-background.js';
-function initThreeJSBackground() {
+function initThreeJSBackground() { /* ... wie gehabt ... */
     const c = document.getElementById('threejs-canvas-container');
     if (c) { try { initThreeJS(c); } catch (e) { console.error("Three.js Fehler:", e); c.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding-top:40vh;">BG Animation Fehler.</p>'; } }
 }
 
+// --- App Start ---
 document.addEventListener('DOMContentLoaded', () => { init(); initThreeJSBackground(); });
